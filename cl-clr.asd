@@ -30,5 +30,13 @@
                                      "symbols"
                                      "types"
                                      "namespaces"))
+                 (:file "assemblies"
+                        :depends-on ("packages"
+                                     "reader"))
+                 (:file "imports"
+                        :depends-on ("packages"
+                                     "symbols"
+                                     "reader"
+                                     "assemblies"))
                  (:system "rdnzl"))
     :depends-on ("rdnzl"))

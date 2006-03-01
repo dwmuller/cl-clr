@@ -131,7 +131,7 @@
               object
               ;; Sadly, new-value has to come after the indexes.
               (list-to-rdnzl-array (append indexes (list new-value)))))
-  (apply #'value-of object member indexes))
+  (apply #'invoke-member object member indexes))
 
 (defun get-member-symbol (member-name)
   (let ((symbol (intern member-name :clr-symbols)))

@@ -6,14 +6,28 @@
   
   ;; Things re-implemented here that take precedence over RDNZL's
   ;; versions:
-  (:shadow :new :use-package)
+  (:shadow :import-type
+           :new
+           :unuse-all-namespaces
+           :unuse-namespace
+           :use-namespace
+           )
   (:export :disable-clr-syntax
+           :do-assemblies
            :enable-clr-syntax
+           :find-type-from-namespace-qualified-name
+           :find-type-from-name
+           :find-type-from-simple-name
            :get-clr-type-object
+           :import-type
+           :import-namespace
+           :is-namespace-qualified-type-name
            :init-clr
            :namespaces-used-by-package
            :new
            :shutdown-clr
+           :unuse-all-namespaces
+           :unuse-namespace
            :use-namespace
            
            ;; RDNZL symbols re-exported
@@ -28,9 +42,9 @@
            :enable-rdnzl-syntax
            :enum-to-integer
            :field
-           :import-assembly
-           :import-type
-           :import-types
+           ;:import-assembly
+           ;:import-type
+           ;:import-types
            :integer-to-enum
            :invoke
            ;:init-rdnzl
@@ -47,8 +61,9 @@
            :rdnzl-handler-case
            ;:shutdown-rdnzl
            :unbox
-           :unuse-all-namespaces
-           :unuse-namespace
-           :use-namespace))
+           ;:unuse-all-namespaces
+           ;:unuse-namespace
+           ;:use-namespace
+           ))
 
 (defpackage :clr-symbols)

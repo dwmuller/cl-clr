@@ -1,3 +1,11 @@
+;;;
+;;; Functions having to do with the manipulation of type names and
+;;; looking up CLR type objects.
+;;;
+;;; Note: Don't use DO-ASSEMBLIES in here. These utilies are more primitive
+;;; than those in assemblies.lisp.
+;;;
+
 (in-package :cl-clr)
 
 (defun find-assembly-qualifier (type-name)
@@ -15,6 +23,8 @@ the first unescaped comma is returned."
      return pos))
 
 (defun elide-assembly (type-name)
+  "TYPE-NAME is a CLR type name string. Remove the assembly
+qualifier, if any, and return the result."
   (let ((qpos (find-assembly-qualifier type-name)))
     (if qpos
         (subseq type-name 0 qpos)
@@ -26,13 +36,13 @@ it is assumed to be the index of the comma denoting an assembly
 qualifier. If there is at least one unescaped period before the
 end of the string or END, then IS-NAMESPACE-QUALIFIED-TYPE-NAME
 returns T, otherwise NIL."
+  (unless end
+    (setf end (or (find-assembly-qualifier type-name)
+                  (length type-name))))
   (loop
      for pos = (position #\. type-name)
      then (position #\. type-name :start (1+ pos))
-     and endpos = (or end
-                      (find-assembly-qualifier type-name)
-                      (length type-name))
-     if (or (not pos) (> pos endpos)) return nil
+     if (or (not pos) (> pos end)) return nil
      if (and pos (or (zerop pos) (not (eql (aref type-name (1- pos)) #\\))))
      return t))
 

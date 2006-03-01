@@ -53,8 +53,9 @@ by ENABLE-CLR-SYNTAX.")
   (member chr +whitespace-char-list+ :test #'char=))
 
 (defun lookup-type-symbol (type-name)
-  (get-type-symbol (find-type-from-name type-name
-                                        (namespaces-for-package *package*))))
+  (get-type-symbol
+   (find-type-from-name type-name
+                        (namespaces-used-by-package *package*))))
 
 (defun read-clr-name (stream)
   (loop
@@ -105,12 +106,10 @@ by ENABLE-CLR-SYNTAX.")
 
 (defun read-clr-token (stream &optional char)
   (declare (ignorable char))
-  (let* ((next-char (peek-char nil stream nil nil t))
-         (result (if (eql #\+ next-char)
-                     (read-clr-type-plus stream (read-char stream t nil t))
-                     (read-clr-member stream char))))
-    (format t "~&CLR form: ~S" result)
-    result))
+  (let ((next-char (peek-char nil stream nil nil t)))
+    (if (eql #\+ next-char)
+        (read-clr-type-plus stream (read-char stream t nil t))
+        (read-clr-member stream char))))
 
 (defun %enable-clr-syntax ()
   "Internal function used to enable reader syntax and store
