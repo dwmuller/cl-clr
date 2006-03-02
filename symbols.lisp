@@ -1,45 +1,7 @@
 (in-package :cl-clr)
 
 ;;;
-;;; Functions to set up and use symbols to represent CLR tokens.
-;;;
-;;; These symbols all reside in the package CLR-SYMBOLS. A symbol can
-;;; represent either a type, or a member, or both, depending on how it
-;;; is used. The symbol's name is exactly the CLR name for the
-;;; corresponding thing. In the case of types, the symbol's name is
-;;; the namespace-qualified type, without the assembly information.
-;;;
-;;; While CL-CLR is running, the CLR type object is cached on the
-;;; corresponding symbol's CL-CLR:TYPE property. If a symbol can be
-;;; used as a member name, it is fbound to a function that allows the
-;;; symbol to be used as a function. (There is no guarantee that a
-;;; corresponding method will exist when invoked, however.) This
-;;; function takes a first argument which must be a RDNZL container if
-;;; an instance method invocation is intended, or a symbol
-;;; representing a CLR type if a static method invocation is
-;;; intended.
-;;;
-;;; Examples, assuming that the current package has imported the
-;;; referenced CLR symbols from CLR-SYMBOLS:
-;;;
-;;;  ;; Invoke an instance method:
-;;;  (|GetAssemblies| app)
-;;;
-;;;  ;; Get/set an instance property or field value:
-;;;  (|FullName| obj)
-;;;  (setf (|FullName| obj) "NewName")
-;;;
-;;;  ;; Invoke a static method:
-;;;  (|GetType| 'clr-symbols:|System.Type| "System.AppDomain")
-;;;
-;;;  ;; Get/set a static property or field value:
-;;;  (|CurrentDomain| '|System.AppDomain|)
-;;;  (setf (|CurrentDomain| '|System.AppDomain|) new-domain)
-;;;
-;;; The reader makes it possible to reference the symbols fairly
-;;; conveniently, and provides both incremental definition of symbols
-;;; and type name resolution against a used namespace list. See that
-;;; file for details.
+;;; Functions to create and use symbols that represent CLR tokens.
 ;;;
 ;;; These key functions in here are GET-TYPE-SYMBOL and
 ;;; GET-MEMBER-SYMBOL.  The functions in this file deal only with
@@ -110,14 +72,14 @@
         (unbox (cast result (invoke result "GetType")))
         result)))
   
-(defun set-member (new-value object member &rest indexes)
+(defun set-member (new-value object member-name &rest indexes)
   ;; This could be done much faster using some of RDNZL's internals.
   (if (symbolp object)
       ;; Note: Unlike in RDNZL, we have the type object
       ;; already.
       (invoke (get 'type object)
               "InvokeMember"
-              (symbol-name member)
+              member-name
               *static-set-prop-or-field-binding-flags*
               *default-binding-object*
               *null-object*
@@ -125,7 +87,7 @@
               (list-to-rdnzl-array (append indexes (list new-value))))
       (invoke (invoke object "GetType")
               "InvokeMember"
-              (symbol-name member)
+              member-name
               *instance-set-prop-or-field-binding-flags*
               *default-binding-object*
               object
@@ -134,7 +96,7 @@
   (apply #'invoke-member object member indexes))
 
 (defun get-member-symbol (member-name)
-  (let ((symbol (intern member-name :clr-symbols)))
+  (let ((symbol (intern (concatenate 'string "." member-name) :clr-symbols)))
     (unless (get 'member symbol)
       (export symbol :clr-symbols)
       (setf (fdefinition symbol)
@@ -147,21 +109,27 @@
     symbol))
 
 (defun get-type-symbol (type-object)
-  (let* ((type-name (concatenate 'string
-                                 (property type-object "Namespace")
-                                 "."
-                                 (property type-object "Name")))
-         (type-symbol (intern type-name :clr-symbols)))
-    (unless (get 'type type-symbol)
-      (setf (get 'type type-symbol) type-object)
-      (export type-symbol :clr-symbols))
-    type-symbol))
+  (let* ((namespace (property type-object "Namespace"))
+         (type-name (property type-object "Name"))
+         (package-name (concatenate 'string "CLR!" namespace))
+         (package   (or (find-package package-name)
+                        (make-package package-name))))
+    (multiple-value-bind (type-symbol status) (intern type-name package)
+      (unless (eq status :external)
+        (let (members)
+          (do-rdnzl-array (member-info (invoke type-object "GetMembers"))
+            ;; TODO: Clean this up, make efficient. Use
+            ;; binding flags to limit to members of interest.
+            ;; Also, handle nested types if necessary. (?)
+            (push (get-member-symbol (property member-info "Name")) members)
+          (import members package)
+          (export (cons type-symbol members) package)))
+        (setf (get 'type type-symbol) type-object))
+      type-symbol)))
 
 (defun get-clr-type-object (type)
   (typecase type
     (symbol
-     (assert (eql (find-package :clr-symbols)
-                  (symbol-package type)))
      (get 'type type))
     (string (find-type-from-namespace-qualified-name type))))
 
@@ -182,6 +150,7 @@
   ;; initialized, conflicts of referenced types will be detected.
   (do-external-symbols (sym :clr-symbols)
     (when (eq (get 'type sym) t)
+      (assert nil)                      ; this needs rewriting
       (setf (get 'type sym)
             (find-type-from-namespace-qualified-name (symbol-name sym)))))
 

@@ -1,0 +1,69 @@
+I suppose a logical next step would be to create a package per
+namespace, with type designator symbols that have simple names,
+i.e. without the namespace qualification. Still pondering that
+possibility. Taking that approach, use-namespace might go away
+entirely. Damn, that seems so logical.
+
+Another possibility:
+
+ CL-CLR maps namespaces to packages, and both type names and member
+names to symbols. It uses simple names for types, and keeps each type
+symbol in its namespace package.
+
+Advantages:
+
+Type references are looked up and scoped in a more natural fashion. A
+Lisp package uses a namespace package in order to get access to its
+types. What could be simpler? Using a namespace now equates to using a
+package. Type name collisions between used packages are now entirely
+in the familiar realm of Lisp package management.
+
+Problems:
+
+1. Harder to keep track of where the type symbols are
+   shutdown/init. Could either keep track of namespace packages or
+   individual symbols.
+
+2. Must keep a map of namespaces to packages.
+
+3. In CLR, member symbols are scoped by class names in a complex way
+   (inheritance). Modelling this with packages does not fit well. So
+   we keep treating member symbols as a 'global' resource. But now
+   they can clash with type symbols.
+
+
+Dealing with type/member collisions:
+
+This is difficult. I can continue to keep all the member symbols in
+one package. For convenience, these symbols should all be imported or
+inherited by each namespace package, and re-exported by it. This works
+even if multiple namespaces are used by an application, because it
+will be getting the *same* symbols multiple times through different
+packages.
+
+The import or inheriting of a member symbol will fail when it clashes
+with a type name.
+
+Or a different reader syntax altogether...
+[type] -> unique symbol for a type
+[type member] -> unique symbol for a static member
+[object member] -> unique symbol for an instance member
+
+No, this doesn't work. The object's CLR type is not known at
+read-time.
+
+Or, each member reference could get a unique symbol. Interestingly,
+this would allow caching information specific to the call site on the
+symbol. Hmm. However, at this point you lose the 'naturalness' of
+editing such code -- e.g. no auto-symbol completion in the editor.
+
+The fundamental problem is the scoping of member names. They're
+incomplete without the type, and the type isn't available at read-time
+in Lisp for instance members. Folding like-named members from
+different types together is not a problem, since we use the symbol as
+a mere token. But type symbols are distinct, even when like-named.
+
+To distinguish type symbols from members, we could make either the
+members or types different by some syntactic feature incorporated in
+the name. I've got it! A period at the beginning of member names. Very
+natural.

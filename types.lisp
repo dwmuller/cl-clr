@@ -8,24 +8,56 @@
 
 (in-package :cl-clr)
 
-(defun find-assembly-qualifier (type-name)
+(defun unescaped-char-position (char string &key (start 0) (end nil))
+  (loop
+     with escaped = nil
+     for pos from start below (or end (length string))
+     for candidate = (aref string pos)
+     until (and (not escaped)
+                (eql char candidate))
+     do
+       (cond
+         (escaped              (setf escaped nil))
+         ((eql candidate char) (return-from unescaped-char-position pos))
+         ((eql #\\ candidate)  (setf escaped t))))
+  nil)
+
+(defun find-assembly-separator (type-name)
   "TYPE-NAME is assumed to be a type name string. If it does not
 contain any unescaped commas, then the name is not
 assembly-qualified and NIL is returned. Otherwise, the index of
 the first unescaped comma is returned."
-  (loop
-     for pos = (position #\, type-name)
-     then (position #\, type-name :start (1+ pos))
-     initially (when (and pos (zerop pos))
-                 (error "Empty type name: ~S" type-name))
-     if (not pos) return nil
-     if (and pos (not (eql (aref type-name (1- pos)) #\\)))
-     return pos))
+  (unescaped-char-position #\, type-name))
+
+(defun find-type-namespace-separator (type-name &key end)
+  (let (period)
+    (loop
+       for pos = (unescaped-char-position #\. type-name :end end)
+       then (unescaped-char-position #\. type-name :start (1+ pos) :end end)
+       while pos
+       do
+         (setf period pos))
+    period))
+  
+(defun split-type-name (type-name)
+  (let* ((comma  (find-assembly-separator type-name))
+         (period (find-type-namespace-separator type-name :end comma)))
+    (cond ((and period comma)
+           (values (subseq type-name 0 period)
+                   (subseq type-name (1+ period) comma)
+                   (subseq type-name (1+ comma))))
+          (period
+           (values (subseq type-name 0 period)
+                   (subseq type-name (1+ period))))
+          (comma
+           (values nil
+                   (subseq type-name 0 comma)
+                   (subseq type-name (1+ comma)))))))
 
 (defun elide-assembly (type-name)
   "TYPE-NAME is a CLR type name string. Remove the assembly
 qualifier, if any, and return the result."
-  (let ((qpos (find-assembly-qualifier type-name)))
+  (let ((qpos (find-assembly-separator type-name)))
     (if qpos
         (subseq type-name 0 qpos)
         type-name)))
@@ -37,7 +69,7 @@ qualifier. If there is at least one unescaped period before the
 end of the string or END, then IS-NAMESPACE-QUALIFIED-TYPE-NAME
 returns T, otherwise NIL."
   (unless end
-    (setf end (or (find-assembly-qualifier type-name)
+    (setf end (or (find-assembly-separator type-name)
                   (length type-name))))
   (loop
      for pos = (position #\. type-name)
@@ -116,13 +148,13 @@ System.Type.GetType(). If the name is qualified by namespace but
 not by assembly, the type is returned if it is unique in the
 current application domain. If the type-name is not qualified at
 all, then the type is returned if it is defined exactly once in
-the global namespace or the currently used namespaces.  An error
+the global namespace or the specified namespaces.  An error
 is signaled if the type-name is ambiguous or undefined."
-  (let ((assembly-part (find-assembly-qualifier type-name)))
+  (let ((assembly-part (find-assembly-separator type-name)))
     (cond
       (assembly-part
        (invoke "System.Type" "GetType" type-name))
-      ((is-namespace-qualified-type-name type-name assembly-part)
+      ((is-namespace-qualified-type-name type-name)
        (find-type-from-namespace-qualified-name type-name))
       (t
        (find-type-from-simple-name type-name namespaces)))))
