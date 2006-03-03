@@ -1,69 +1,67 @@
-I suppose a logical next step would be to create a package per
-namespace, with type designator symbols that have simple names,
-i.e. without the namespace qualification. Still pondering that
-possibility. Taking that approach, use-namespace might go away
-entirely. Damn, that seems so logical.
+Some of these items are more on the order of "wish" or "whacky idea to
+investigate" than "to do".
 
-Another possibility:
+- In GET-TYPE-SYMBOL, check efficiency. Perhaps use binding flags to
+  limit to members of interest -- although ultimately all public
+  member of interest? Handle nested types if they're included in the
+  member list. (I doubt they are.)
 
- CL-CLR maps namespaces to packages, and both type names and member
-names to symbols. It uses simple names for types, and keeps each type
-symbol in its namespace package.
+- UNUSE-NAMESPACE does not attempt to remove type or member symbols
+  from the target package. Member symbols would be difficult to do,
+  but types would easily be possible. Should it do so? This would be
+  more analogous to UNUSE-PACKAGE.
 
-Advantages:
+- Separate 'importing' from 'binding'.
 
-Type references are looked up and scoped in a more natural fashion. A
-Lisp package uses a namespace package in order to get access to its
-types. What could be simpler? Using a namespace now equates to using a
-package. Type name collisions between used packages are now entirely
-in the familiar realm of Lisp package management.
+- Add event support.
 
-Problems:
+- Allow overriding of the package name prefix for namespace packages.
 
-1. Harder to keep track of where the type symbols are
-   shutdown/init. Could either keep track of namespace packages or
-   individual symbols.
+- Allow the addition of a namespace prefix on assembly contents when
+  loading (or binding?) an assembly.
 
-2. Must keep a map of namespaces to packages.
+- Allow specifying how CLR names are translated to symbol names:
+  :upcase, :downcase, :preserve, :invert, and :lisp to attempt
+  conversion to Lisp-like naming conventions. Default to :preserve.
 
-3. In CLR, member symbols are scoped by class names in a complex way
-   (inheritance). Modelling this with packages does not fit well. So
-   we keep treating member symbols as a 'global' resource. But now
-   they can clash with type symbols.
+- Integrate as much as possible into RDNZL, if Edi agrees. Need to
+  work out with him what aspects are incompatible with current RDNZL
+  semantics and syntax, and to what extent this is an issue. (How many
+  RDNZL users are there? How open to change are they? Does Edi even
+  think the ideas in CL-CLR worthwhile, or does he see flaws that I've
+  missed so far?)
+
+- Enhance SLIME's symbol completion logic. Possible algorithm:
+  - Make elisp code find symbol begin across escapes
+  - Close any open multi-escape.
+  - Read as an uninterned symbol to find out what the reader makes of it.
+  - Use the resulting symbol's name directly to find candidates.
+
+- Or: Abandon the reader. Depends on how valuable the incremental
+  loading is. Have to get some stats on how heavy a load the extra
+  packages and symbols impose on an image.
+
+- Automatic caching of candidate member info sets, in a member or
+  type symbol property.  See System.Reflection.Binder.BindToMethod
+  and BindToField for some ideas on why this would be useful. (For
+  properties, perhaps need to use the set/get method names?)
+
+- Allow strings to be provided where member or type objects are
+  now required. Of course, the above-mentioned caching of member
+  info won't happen in such cases.
+
+- A custom binder could provide a more elegant and correct solution to
+  the LispWorks single/double float problem, sacrificing precision
+  only when necessary to find a signature match.
+
+- Define member symbols as macros rather than functions. Expand them
+  to unique symbols defined such that they can still serve as member
+  symbols, but also represent a unique calling site that
+  self-optimizes the member lookup at runtime.
 
 
-Dealing with type/member collisions:
+Testing TODO:
 
-This is difficult. I can continue to keep all the member symbols in
-one package. For convenience, these symbols should all be imported or
-inherited by each namespace package, and re-exported by it. This works
-even if multiple namespaces are used by an application, because it
-will be getting the *same* symbols multiple times through different
-packages.
+- Test performance, compare to RDNZL.
 
-The import or inheriting of a member symbol will fail when it clashes
-with a type name.
-
-Or a different reader syntax altogether...
-[type] -> unique symbol for a type
-[type member] -> unique symbol for a static member
-[object member] -> unique symbol for an instance member
-
-No, this doesn't work. The object's CLR type is not known at
-read-time.
-
-Or, each member reference could get a unique symbol. Interestingly,
-this would allow caching information specific to the call site on the
-symbol. Hmm. However, at this point you lose the 'naturalness' of
-editing such code -- e.g. no auto-symbol completion in the editor.
-
-The fundamental problem is the scoping of member names. They're
-incomplete without the type, and the type isn't available at read-time
-in Lisp for instance members. Folding like-named members from
-different types together is not a problem, since we use the symbol as
-a mere token. But type symbols are distinct, even when like-named.
-
-To distinguish type symbols from members, we could make either the
-members or types different by some syntactic feature incorporated in
-the name. I've got it! A period at the beginning of member names. Very
-natural.
+- Test image creation and loading.

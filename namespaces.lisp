@@ -4,11 +4,6 @@
 ;;; The used namespace list is maintained per-package. These lists
 ;;; affect the operation of the reader.
 ;;;
-;;; Note: UNUSE-NAMESPACE does not attempt to remove type or member
-;;; symbols from the target package. Member symbols would be difficult
-;;; to do, but types would easily be possible. Should it do so? This
-;;; would be more analogous to UNUSE-PACKAGE.
-;;;
 
 (in-package :cl-clr)
 

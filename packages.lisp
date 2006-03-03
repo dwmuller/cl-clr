@@ -18,7 +18,9 @@
            :find-type-from-namespace-qualified-name
            :find-type-from-name
            :find-type-from-simple-name
-           :get-clr-type-object
+           :get-member-symbol
+           :get-type-symbol
+           :get-type-object
            :import-type
            :import-namespace
            :is-namespace-qualified-type-name

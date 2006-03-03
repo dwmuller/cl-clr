@@ -8,7 +8,7 @@ current application domain, with VAR bound to the corresponding
 System.Reflection.Assembly object. Returns nothing. (Currently,
 this iterates through all assemblies in the application domain.)"
   `(do-rdnzl-array
-       (,var (?GetAssemblies (?CurrentDomain '?+System.AppDomain)))
+       (,var (?.GetAssemblies (?.CurrentDomain '?System.AppDomain)))
      ,@body))
        
 (disable-clr-syntax)

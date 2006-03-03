@@ -15,27 +15,21 @@
 ;;; symbol in package CLR-SYMBOLS. In the case of members, that symbol
 ;;; is also imported into the current package.
 ;;;
-;;; The canonical form for calling a static method or referencing a
-;;; static field or property is:
+;;; The form for calling a static method or referencing a static field
+;;; or property is:
 ;;;
-;;;   (?method '?+type args*)
+;;;   (?.method '?type args*)
 ;;;
 ;;; In other words, static method invocations are exactly like
 ;;; instance method invocations, except that the 'object' is a symbol
 ;;; designating a CLR type.
 ;;;
-;;; An (even more) experimental form for static references is:
-;;;
-;;;   (?+type?method args*)
-;;;
 ;;; Reader syntax expansions:
 ;;;
 ;;; What             Syntax                   Expansion
 ;;; -----------------------------------------------------------------------
-;;; type:            ?+typename               symbol
-;;; member:          ?membername              symbol
-;;; static member:   type?membername          (lambda (&rest args)
-;;;                                              (apply member 'type args))
+;;; type:            ?typename               symbol
+;;; member:          ?.membername              symbol
 ;;;
 
 (in-package :cl-clr)
@@ -67,7 +61,6 @@ by ENABLE-CLR-SYNTAX.")
      do (error "EOF encountered after escape (\\) in CLR symbol.")
      until (and (not escaped)
                 (or (not char)          ;eof
-                    (eql #\? char)      ;trailing member ref
                     (whitespacep char)
                     (eql #\) char)))         ;end of a list
      do
@@ -84,42 +77,31 @@ by ENABLE-CLR-SYNTAX.")
 
 (defun read-clr-member (stream &optional char)
   (declare (ignorable char))
-  (let ((symbol (get-member-symbol (read-clr-name stream))))
-    (import symbol *package*)
-    symbol))
+  (let ((member-symbol (get-member-symbol (read-clr-name stream))))
+    (import member-symbol *package*)
+    member-symbol))
 
 (defun read-clr-type (stream &optional char)
   (declare (ignorable char))
-  (let ((symbol (lookup-type-symbol (read-clr-name stream))))
-    (import symbol *package*)
-    symbol))
-
-(defun read-clr-type-plus (stream &optional char)
-  (declare (ignorable char))
-  (let ((type-symbol (read-clr-type stream char)))
-    (if (eql #\? (peek-char nil stream nil nil t))
-        `(lambda (&rest args)
-           (apply (function ,(read-clr-member stream
-                                              (read-char stream t nil t)))
-                  ',type-symbol args))
-     type-symbol)))
+  (let ((type-symbol (lookup-type-symbol (read-clr-name stream))))
+    (import type-symbol *package*)
+    type-symbol))
 
 (defun read-clr-token (stream &optional char)
   (declare (ignorable char))
   (let ((next-char (peek-char nil stream nil nil t)))
-    (if (eql #\+ next-char)
-        (read-clr-type-plus stream (read-char stream t nil t))
-        (read-clr-member stream char))))
+    (if (eql #\. next-char)
+        (read-clr-member stream (read-char stream t nil t))
+        (read-clr-type stream char))))
 
-(defun %enable-clr-syntax ()
+(defun %enable-clr-syntax (&optional (macro-char #\?))
   "Internal function used to enable reader syntax and store
-current readtable on stack."
+current readtable on stack. MACRO-CHAR is the character used to
+prefix CLR names, and defaults to the question mark."
   (setf *readtable* (copy-readtable))
   (push *readtable*
         *previous-readtables*)
-  (when (get-macro-character #\?)
-    (warn "Enabling CLR syntax when #\? is already defined as a macro-character."))
-  (set-macro-character #\? #'read-clr-token t)
+  (set-macro-character macro-char #'read-clr-token t)
   (values))
 
 (defun %disable-clr-syntax ()

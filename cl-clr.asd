@@ -16,27 +16,25 @@
     :components ((:file "packages")
                  (:file "namespaces"
                         :depends-on ("packages"))
+                 (:file "types"
+                        :depends-on ("packages"))
                  (:file "symbols"
                         :depends-on ("packages"
                                      "types"))
                  (:file "init"
                         :depends-on ("packages"
                                      "symbols"))
-                 (:file "types"
-                        :depends-on ("packages"
-                                     "namespaces"))
-                 (:file "reader"
-                        :depends-on ("packages"
-                                     "symbols"
-                                     "types"
-                                     "namespaces"))
                  (:file "assemblies"
                         :depends-on ("packages"
                                      "reader"))
                  (:file "imports"
                         :depends-on ("packages"
                                      "symbols"
-                                     "reader"
                                      "assemblies"))
+                 (:file "reader"
+                        :depends-on ("packages"
+                                     "symbols"
+                                     "types"
+                                     "namespaces"))
                  (:system "rdnzl"))
     :depends-on ("rdnzl"))
