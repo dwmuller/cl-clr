@@ -32,6 +32,13 @@
 (defun binding-flag (name)
   (field "System.Reflection.BindingFlags" name))
 
+(defun force-type (obj)
+  "A hack to experiment with always using the run-time type,
+  rather than the apparent type, for containers."
+  (if (container-p obj)
+      (cast obj (invoke obj "GetType"))
+      obj))
+
 (defun invoke-member (object member-name &rest args)
   (let ((result
          (if (symbolp object)
@@ -49,8 +56,8 @@
                      *default-binding-object*
                      object
                      (list-to-rdnzl-array args)))))
-    (if result
-        (unbox (cast result (invoke result "GetType")))
+    (if (container-p result)
+        (unbox (force-type result))
         result)))
   
 (defun set-member (new-value object member-name &rest indexes)
@@ -76,6 +83,17 @@
               (list-to-rdnzl-array (append indexes (list new-value)))))
   (apply #'invoke-member object member-name indexes))
 
+(defun get-namespace-package (namespace)
+  "Given a CLR namespace name, return the package that represents
+  it in Lisp. Note "
+  (let* ((pkg-name (concatenate 'string "CLR!" namespace))
+         (pkg (find-package pkg-name)))
+    (when (not pkg)
+      (setf pkg (make-package pkg-name))
+      ;(format t "~&New namespace package ~S." (package-name pkg))
+      (push pkg *namespace-packages*))
+    pkg))
+    
 (defun get-member-symbol (member-name)
   "Given the name of a CLR member, return a symbol to represent
 it. The symbol is interned in the CLR-SYMBOLS package, and has no
@@ -92,16 +110,6 @@ inherent relationship with any type."
       (setf (get symbol 'clr-member) t))
     symbol))
 
-(defun get-namespace-package (namespace)
-  (let* ((pkg-name (concatenate 'string "CLR!" namespace))
-         (pkg (find-package pkg-name)))
-    (when (not pkg)
-      (setf pkg (make-package pkg-name))
-      ;(format t "~&New namespace package ~S." (package-name pkg))
-      (push pkg *namespace-packages*))
-    pkg))
-    
-    
 (defun get-type-symbol (type)
   "TYPE must be a namespace-qualified type name string or a CLR
 type object. Returns a symbol to represent the type. The symbol
@@ -111,17 +119,18 @@ are imported into that package from CLR-SYMBOLS."
                              (find-type-from-namespace-qualified-name type))
                             ((container-p type) type)
                             (t (error "Expected TYPE to be a CLR type object or qualified type name string."))))
-         (namespace (property type-object "Namespace"))
-         (type-name (property type-object "Name"))
-         (package  (get-namespace-package namespace)))
+         (namespace   (property type-object "Namespace"))
+         (type-name   (property type-object "Name"))
+         (package     (get-namespace-package namespace)))
     (multiple-value-bind (type-symbol status) (intern type-name package)
       (unless (eq status :external)
         (let (members)
           (do-rdnzl-array (member-info (invoke type-object "GetMembers"))
-            (push (get-member-symbol (property member-info "Name")) members)
+            (pushnew (get-member-symbol (property member-info "Name")) members)
           (import members package)
-          (export (cons type-symbol members) package)))
-        (setf (get type-symbol 'clr-type) type-object))
+          (export (cons type-symbol members) package))
+          (setf (get type-symbol 'clr-members) members))
+        (setf (get type-symbol 'clr-type) (force-type type-object)))
       type-symbol)))
 
 (defun get-type-object (type)
@@ -136,8 +145,32 @@ other cases."
                             (error "~S does not name an accessible type.")))
         ((symbolp type) (or (get type 'clr-type)
                             (error "~S is not a CLR type symbol." type)))
-        ((container-p type) (invoke type "GetType"))
+        ((container-p type) (force-type (invoke type "GetType")))
         (t (error "Expected string, symbol, or CLR object for TYPE."))))
+
+(defun bind-namespace (namespace)
+  "Binds all type and member symbols of a namespace which can be
+found in the currently loaded assemblies of the current
+application domain.  Returns the namespace package."
+  (let ((package (get-namespace-package namespace)))
+    (do-rdnzl-array (assembly (invoke "System.AppDomain" "CurrentDomain"))
+      (do-rdnzl-array (type-object (invoke assembly "GetTypes"))
+        (when (zerop (search namespace (property type-object "FullName")))
+          (get-type-symbol type-object) package)))
+    package))
+
+(defun import-type (type &optional (package *package*))
+  "TYPE is a symbol or string designating a CLR
+type. IMPORT-TYPES imports the symbol designating the CLR type to
+PACKAGE, which defaults to *PACKAGE*. It also imports symbols to
+represent all public members of the CLR type. Returns the symbol
+designating the CLR type."
+  (setf package (find-package *package*))
+  (when (stringp type)
+    (setf type (get-type-symbol type)))
+  (import type package)
+  (import (get type 'clr-members) package)
+  type)
 
 (defun init-symbols ()
   (flet ((find-and-cache-system-type (name)

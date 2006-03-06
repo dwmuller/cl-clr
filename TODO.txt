@@ -1,6 +1,27 @@
 Some of these items are more on the order of "wish" or "whacky idea to
 investigate" than "to do".
 
+- INVOKE-MEMBER has one, possibly serious, problem. It uses
+  System.Type.InvokeMember, which is a great shortcut compared to
+  looking up MemberInfo objects. Unfortunately, the declared return
+  type is Object, so that's the type that resulting containers will
+  have. INVOKE-MEMBER casts to the dynamically-determined type.
+
+- The item above point raises an interesting point. RDNZL follows
+  Pinto's approach in keeping the 'declared' or 'apparent' type with
+  an object reference, and using that as the basis for member
+  lookups. This follows the model of statically-typed languages like
+  C#. I wonder if this is worthwhile. I think the situations where a
+  fully dynamic approach causes problems are rare, and can be
+  addressed through a separate, explicit mechanism. (E.g. a TREAT-AS
+  wrapper.) If this were abandoned, the implementation could be much
+  more efficient. In fact, the DotNetContainer and DotNetReference
+  classes could go away entirely, using (GC-locked) CLR object
+  references directly!
+
+  I have tweaked CL-CLR so that it consistently casts returned
+  containers to the run-time type, in order to experiment with this.
+
 - In GET-TYPE-SYMBOL, check efficiency. Perhaps use binding flags to
   limit to members of interest -- although ultimately all public
   member of interest? Handle nested types if they're included in the
@@ -18,18 +39,19 @@ investigate" than "to do".
 - Allow overriding of the package name prefix for namespace packages.
 
 - Allow the addition of a namespace prefix on assembly contents when
-  loading (or binding?) an assembly.
+  loading (or binding?) an assembly. Track loaded assemblies?
 
 - Allow specifying how CLR names are translated to symbol names:
   :upcase, :downcase, :preserve, :invert, and :lisp to attempt
-  conversion to Lisp-like naming conventions. Default to :preserve.
+  conversion to Lisp-like naming conventions. Default to :preserve,
+  because it's the least likely to collide with Lisp names.
 
-- Integrate as much as possible into RDNZL, if Edi agrees. Need to
-  work out with him what aspects are incompatible with current RDNZL
-  semantics and syntax, and to what extent this is an issue. (How many
-  RDNZL users are there? How open to change are they? Does Edi even
-  think the ideas in CL-CLR worthwhile, or does he see flaws that I've
-  missed so far?)
+- Find out what, if anything, Edi would like to integrate into RDNZL
+  from this. Need to work out with him what aspects are incompatible
+  with current RDNZL semantics and syntax, and to what extent this is
+  an issue. (How many RDNZL users are there? How open to change are
+  they? Does Edi even think the ideas in CL-CLR worthwhile, or does he
+  see flaws that I've missed so far?)
 
 - Enhance SLIME's symbol completion logic. Possible algorithm:
   - Make elisp code find symbol begin across escapes

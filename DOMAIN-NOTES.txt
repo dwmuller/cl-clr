@@ -1,0 +1,112 @@
+How RDNZL starts up:
+
+When ffi.lisp is loaded, FFI-REGISTER-MODULE gets called to load the
+RDNZL DLL. This is implemented in each port-*.lisp file. Then the
+various foreign functions are defined using a clever macro system.
+
+When the DLL loads, because it's a .NET assembly, a default
+application domain is created to contain it.
+
+Later, INIT-RDNZL calls DLL-ENSURE-INIT, which results in a foreign
+function call to DllEnsureInit in the RDNZL DLL. This makes sure that
+the C++ runtime is initialized. (Things are arranged to do this
+explicitly after the managed code has initialized, for arcane reasons
+that have been much-talked about on the net due to their complexity
+and importance.)
+
+RDNZL doesn't allow you to specify the location of the RDNZL DLL
+before it's loaded. How it's found is up to the Lisp
+implementation. The RDNZL docs recommend that you place the DLL in the
+same directory as the Lisp executable. Presumably this works with most
+Lisps, but some will also search the path and other locations.
+
+
+------------------------------------------------------------------------------
+
+So far, I've been working only with assemblies in the default
+application domain. Each domain is pretty distinct, and controls a lot
+of things having to do with assembly loading and configuration
+control. The base directory of the default domain is determined by the
+location of the Lisp executable. Moving the RDNZL DLL to a different
+directory has no effect on this.
+
+This is unfortunate for Lisp application development, since you'd like
+to pick up custom assemblies from a location related to your Lisp
+source code, not from a location related to your Lisp implementation!
+From the AppDomain FAQ at GotDotNet:
+
+     What is a default domain?
+
+     The default domain is an application domain that is created
+     automatically by the CLR every time it is initialized in a
+     process. The default domain is not unloaded until the process
+     shuts down. Most hosts dont run code in the default domain for
+     two main reasons. First, the default domain cannot be shut down
+     independently of the process. Second, for security and isolation
+     reasons, it is desirable that the user code and hosting code
+     execute in different application domains. Instead, hosts create
+     application domains with a set of properties that control
+     security, isolation, loading, etc.
+
+The same FAQ has this to say in the discussion of loading an assembly
+into an application domain:
+
+     An attempt to call AppDomain.Load on an application domain that
+     is not the current application domain will result in a successful
+     load of the assembly in the target application domain. Since
+     Assembly objects are not MarshalByRef, when the method attempts
+     to return the Assembly object for the loaded assembly to the
+     current application domain (i.e., the callers application
+     domain), the runtime will try to load the specified assembly into
+     the current application domain. The load may fail if the
+     configuration settings (such as AppDomainSetup.ApplicationBase)
+     for the two application domains are different. Even when the
+     loading into the current application domain succeeds, the
+     Assembly object that is loaded into the current application
+     domain is different from the assembly that was loaded into the
+     target application domain.
+
+Unfortunately, the FAQ doesn't explain how to work around this
+limitation!
+
+What's going on here is that you _can_ pass unmarshalled objects
+between domains, but they're copied rather than referenced. In order
+to deal with the copied objects, the associated assembly has to be
+loaded into the domain where the copy resides. If the copying domain
+can't load the assembly because it can't find it (having a different
+ApplicationBase directory, for instance), then this fail.
+
+It seems in order to do this sort of thing you really need to write
+host code that runs in the dynamically-created application domain and
+which arbitrates the loading of assemblies there -- a remote
+loader. For this inconvenience to make sense, you have to think of
+appdomains as separate processes, which is exactly how Microsoft wants
+you to think of them. After much search, I found an article by Eric
+Gunnerson, "AppDomains and Dynamic Loading", that describes this
+clearly. However, it's not entirely clear in one important
+detail. Although he talks about loading "our add-in application from a
+totally different directory", it turns out that the PrivateBinPath can
+only specify subdirectories of the ApplicationBase directory.
+
+So we have this problem that we'd like the remote loader to get loaded
+both in the original domain and in the add-in domain, but we'd like
+the add-in domain to have its own project-specific base. The only way
+around this seems to be to have the remote loader installed in the
+Global Assembly Cache. (See Suzanne Cook's blog entries on the
+loader. Although often too terse, they're helpful.) To do this, the
+assembly has to have a strong name, which introduces another level of
+complexity.
+
+References:
+
+AppDomain FAQ:
+   http://www.gotdotnet.com/team/clr/AppDomainFAQ.aspx
+
+AppDomain and Dynamic Loading:
+  http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dncscol/html/csharp05162002.asp
+
+Dynamic Plugins: Using the AppDomain Class to Load and Unload Code:
+  http://www.devsource.com/article2/0,1759,1790388,00.asp
+
+Switching to the Load Context (Suzanne Cook)
+  http://blogs.msdn.com/suzcook/archive/2003/06/13/57180.aspx

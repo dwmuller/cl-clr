@@ -12,22 +12,26 @@
            :unuse-namespace
            :use-namespace
            )
-  (:export :disable-clr-syntax
+  (:export :bind-namespace
            :do-assemblies
-           :enable-clr-syntax
            :find-type-from-namespace-qualified-name
            :find-type-from-name
            :find-type-from-simple-name
            :get-member-symbol
+           :get-namespace-package
            :get-type-symbol
            :get-type-object
            :import-type
-           :import-namespace
            :is-namespace-qualified-type-name
            :init-clr
+           :load-assembly
            :namespaces-used-by-package
            :new
            :shutdown-clr
+
+           ;; Related to the alternative reader:
+           :disable-clr-syntax
+           :enable-clr-syntax
            :unuse-all-namespaces
            :unuse-namespace
            :use-namespace
@@ -50,7 +54,7 @@
            :integer-to-enum
            :invoke
            ;:init-rdnzl
-           :load-assembly
+           ;:load-assembly
            :list-to-rdnzl-array
            :make-null-object
            ;:new

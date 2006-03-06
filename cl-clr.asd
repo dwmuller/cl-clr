@@ -14,8 +14,6 @@
 
 (asdf:defsystem :cl-clr
     :components ((:file "packages")
-                 (:file "namespaces"
-                        :depends-on ("packages"))
                  (:file "types"
                         :depends-on ("packages"))
                  (:file "symbols"
@@ -25,16 +23,10 @@
                         :depends-on ("packages"
                                      "symbols"))
                  (:file "assemblies"
-                        :depends-on ("packages"
-                                     "reader"))
-                 (:file "imports"
-                        :depends-on ("packages"
-                                     "symbols"
-                                     "assemblies"))
+                        :depends-on ("packages"))
                  (:file "reader"
                         :depends-on ("packages"
                                      "symbols"
-                                     "types"
-                                     "namespaces"))
+                                     "types"))
                  (:system "rdnzl"))
     :depends-on ("rdnzl"))

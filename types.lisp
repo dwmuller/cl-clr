@@ -2,8 +2,8 @@
 ;;; Functions having to do with the manipulation of type names and
 ;;; looking up CLR type objects.
 ;;;
-;;; Note: Don't use DO-ASSEMBLIES in here. These utilies are more primitive
-;;; than those in assemblies.lisp.
+;;; Note: Don't use DO-ASSEMBLIES in here. These utilities are more
+;;; primitive than those in assemblies.lisp.
 ;;;
 
 (in-package :cl-clr)
@@ -96,10 +96,13 @@ INIT-TYPE-OBJECTS."
             (null (setf result type))
             (list (push type result))
             (t (setf result (list type result)))))))
+    (force-type result)
     (typecase result
       (null
-       (error "Could not find an accessible public type named ~S."
-              type-name))
+       (error "Could not find an accessible public type named ~S.~%Searched these assemblies:~%~{  ~A~%~}"
+              type-name
+              (map 'list #'(lambda (a) (property a "FullName"))
+                   (rdnzl-array-to-list (invoke app-domain "GetAssemblies")))))
       (list
        (error "Type ~S is multiply defined in these assemblies:~%~{  ~A~%~}"
               type-name
@@ -128,6 +131,7 @@ the type is not found, or if it is ambiguous."
                   (null (setf result type))
                   (t (push type result))
                   (symbol (setf result (list type result))))))))
+    (force-type result)
     (typecase result
       (null
        (error "Could not find an accessible public type named ~S.~%Searched these namespaces:~%~{  ~A~%~}"
@@ -150,12 +154,12 @@ current application domain. If the type-name is not qualified at
 all, then the type is returned if it is defined exactly once in
 the global namespace or the specified namespaces.  An error
 is signaled if the type-name is ambiguous or undefined."
-  (let ((assembly-part (find-assembly-separator type-name)))
-    (cond
-      (assembly-part
-       (invoke "System.Type" "GetType" type-name))
-      ((is-namespace-qualified-type-name type-name)
-       (find-type-from-namespace-qualified-name type-name))
-      (t
-       (find-type-from-simple-name type-name namespaces)))))
+  (force-type (let ((assembly-part (find-assembly-separator type-name)))
+                (cond
+                  (assembly-part
+                   (invoke "System.Type" "GetType" type-name))
+                  ((is-namespace-qualified-type-name type-name)
+                   (find-type-from-namespace-qualified-name type-name))
+                  (t
+                   (find-type-from-simple-name type-name namespaces))))))
 
