@@ -7,6 +7,7 @@
   ;; Things re-implemented here that take precedence over RDNZL's
   ;; versions:
   (:shadow :import-type
+           :load-assembly
            :new
            :unuse-all-namespaces
            :unuse-namespace
