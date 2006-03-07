@@ -159,6 +159,16 @@ application domain.  Returns the namespace package."
           (get-type-symbol type-object) package)))
     package))
 
+(defmacro def-namespaces (&rest namespaces)
+  "Used to declare the namespaces that will be referenced by a program.
+Ensures that a package exists to represent each namespace. If you
+use a separate file to define packages for you program, it is
+recommended that you include a def-namespaces form in this same
+file."
+  (eval-when (:compile-toplel :load-toplevel :execute)
+    `(map nil #'get-namespace-package ',namespaces)))
+
+
 (defun import-type (type &optional (package *package*))
   "TYPE is a symbol or string designating a CLR
 type. IMPORT-TYPES imports the symbol designating the CLR type to

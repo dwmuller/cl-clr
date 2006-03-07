@@ -14,6 +14,7 @@
            :use-namespace
            )
   (:export :bind-namespace
+           :def-namespaces
            :do-assemblies
            :find-type-from-namespace-qualified-name
            :find-type-from-name
