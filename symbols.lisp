@@ -25,9 +25,17 @@
 (defvar *instance-set-prop-or-field-binding-flags* nil)
                      
 (defun new (type &rest args)
-  (if (symbolp type)
-      (setf type (get type 'clr-type)))
-  (apply #'rdnzl:new type args))
+  "Make a new object of type indicated by TYPE, which must be a
+symbol designating a CLR type, a CLR type object, or a
+namespace-qualified name string of a CLR type."
+  (apply #'rdnzl:new
+         (cond 
+           ((symbolp type) (get-type-object type))
+           ((container-p type) type)
+           ((stringp type) (find-type-from-namespace-qualified-name type))
+           (t (error "~S is not a symbol, CLR object, or string designating a CLR type."
+                     type)))
+         args))
 
 (defun binding-flag (name)
   (field "System.Reflection.BindingFlags" name))
@@ -93,23 +101,54 @@
       ;(format t "~&New namespace package ~S." (package-name pkg))
       (push pkg *namespace-packages*))
     pkg))
-    
+
+(defun bind-member-symbol (member-symbol &optional member-name)
+  "Makes a symbol usable as a CLR member designator. Returns the
+symbol. Unless member-name is supplied, the symbol's name must be
+a CLR member name, with a preceding period."
+  (unless member-name
+    (setf member-name (subseq (symbol-name member-symbol) 1)))
+  (setf (fdefinition member-symbol)
+        #'(lambda (object &rest args)
+            (apply #'invoke-member object member-name args)))
+  (setf (fdefinition (list 'setf member-symbol))
+        #'(lambda (new-value object &rest args)
+            (apply #'set-member new-value object member-name args)))
+  (setf (get member-symbol 'clr-member) t)
+  member-symbol)
+  
 (defun get-member-symbol (member-name)
   "Given the name of a CLR member, return a symbol to represent
-it. The symbol is interned in the CLR-SYMBOLS package, and has no
-inherent relationship with any type."
+it. The symbol is interned in the CLR-SYMBOLS package."
   (let ((symbol (intern (concatenate 'string "." member-name) :clr-symbols)))
+    (export symbol :clr-symbols)
     (unless (get symbol 'clr-member)
-      (export symbol :clr-symbols)
-      (setf (fdefinition symbol)
-            #'(lambda (object &rest args)
-                (apply #'invoke-member object member-name args)))
-      (setf (fdefinition (list 'setf symbol))
-            #'(lambda (new-value object &rest args)
-                (apply #'set-member new-value object member-name args)))
-      (setf (get symbol 'clr-member) t))
+      (bind-member-symbol symbol member-name))
     symbol))
 
+(defun get-type-name-from-symbol (sym)
+  (let* ((pkg             (symbol-package sym))
+         (pkg-name        (and pkg (package-name pkg)))
+         (namespace-name  (and (eql 4 (mismatch pkg-name "CLR!"))
+                               (subseq pkg-name 4))))
+    (unless namespace-name
+      (error "Symbol ~S does not designate a CLR type." sym))
+     (concatenate 'string namespace-name "." (symbol-name sym))))
+     
+(defun bind-type-symbol (type-symbol &optional type-object)
+  "Given a symbol whose home package represents a namespace, and
+whose name is a CLR type name in that namespace, bind the symbol
+as a designator for that CLR type. Returns the symbol."
+  (unless type-object
+    (setf type-object
+          (get-type-object (get-type-name-from-symbol type-symbol))))
+  (let (members)
+    (do-rdnzl-array (member-info (invoke type-object "GetMembers"))
+      (pushnew (get-member-symbol (property member-info "Name")) members))
+    (setf (get type-symbol 'clr-members) members))
+  (setf (get type-symbol 'clr-type) (force-type type-object))
+  type-symbol)
+ 
 (defun get-type-symbol (type)
   "TYPE must be a namespace-qualified type name string or a CLR
 type object. Returns a symbol to represent the type. The symbol
@@ -124,13 +163,10 @@ are imported into that package from CLR-SYMBOLS."
          (package     (get-namespace-package namespace)))
     (multiple-value-bind (type-symbol status) (intern type-name package)
       (unless (eq status :external)
-        (let (members)
-          (do-rdnzl-array (member-info (invoke type-object "GetMembers"))
-            (pushnew (get-member-symbol (property member-info "Name")) members)
-          (import members package)
-          (export (cons type-symbol members) package))
-          (setf (get type-symbol 'clr-members) members))
-        (setf (get type-symbol 'clr-type) (force-type type-object)))
+        (bind-type-symbol type-symbol type-object)
+        (export type-symbol package)
+        (import (get type-symbol 'clr-members) package)
+        (export (get type-symbol 'clr-members) package))
       type-symbol)))
 
 (defun get-type-object (type)
@@ -144,7 +180,9 @@ other cases."
   (cond ((stringp type) (or (find-type-from-namespace-qualified-name type)
                             (error "~S does not name an accessible type.")))
         ((symbolp type) (or (get type 'clr-type)
-                            (error "~S is not a CLR type symbol." type)))
+                            (setf (get type 'clr-type)
+                                  (find-type-from-namespace-qualified-name
+                                   (get-type-name-from-symbol type)))))
         ((container-p type) (force-type (invoke type "GetType")))
         (t (error "Expected string, symbol, or CLR object for TYPE."))))
 

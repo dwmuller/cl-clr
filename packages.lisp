@@ -9,9 +9,6 @@
   (:shadow :import-type
            :load-assembly
            :new
-           :unuse-all-namespaces
-           :unuse-namespace
-           :use-namespace
            )
   (:export :bind-namespace
            :def-namespaces
@@ -27,16 +24,12 @@
            :is-namespace-qualified-type-name
            :init-clr
            :load-assembly
-           :namespaces-used-by-package
            :new
            :shutdown-clr
 
            ;; Related to the alternative reader:
-           :disable-clr-syntax
-           :enable-clr-syntax
-           :unuse-all-namespaces
-           :unuse-namespace
-           :use-namespace
+           :use-namespaces
+           :bind-clr-symbols
            
            ;; RDNZL symbols re-exported
            :*coerce-double-floats-to-single*
@@ -45,9 +38,9 @@
            :cast
            :container-p
            :define-rdnzl-call
-           :disable-rdnzl-syntax
+           ;:disable-rdnzl-syntax
            :do-rdnzl-array
-           :enable-rdnzl-syntax
+           ;:enable-rdnzl-syntax
            :enum-to-integer
            :field
            ;:import-assembly

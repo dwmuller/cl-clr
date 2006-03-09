@@ -17,8 +17,10 @@ symbols.
 If you are concerned with loading only as much CLR type infomation as
 you need, to keep the size of your image minimal, you can use an
 alternative reader syntax which incrementally locates and binds type
-information from assemblies. Loading entire namespaces, however, is
-much more convenient for interactive exploration of CLR environments.
+information from assemblies. Loading entire namespaces may be more
+convenient for interactive exploration of CLR environments, but the
+reader syntax is easy to use and provides read-time lookup of type
+names in a list of used namespaces.
 
 A symbol representing a type is interned in a package that has the
 same name as the type's namespace, prefixed by "CLR!". These packages
@@ -79,22 +81,30 @@ referenced CLR symbols from CLR-SYMBOLS:
 ----------------------------------------------------------------------------
 The alternative reader syntax.
 
+You initiate the reader syntax by a call to USE-NAMESPACES, e.g.
+
+(use-namespaces "System"
+		"System.Windows.Forms")
+
+
 The reader expands CLR names prefixed by a question mark, like this:
 
 What             Syntax                   Expansion
 ---------------------------------------------------
 type:            ?+typename               type-sym
 member:          ?membername              member-sym
-static member:   ?+typename?membername    (lambda (&rest args)
-                                             (apply member-sym
-                                                    'type-sym args))
-
-(The last entry should be considered *very* experimental; it may be
-dropped soon.)
 
 Type names can be either namespace-qualified, or simple. If simple,
 they must uniquely identify a type in one of the currently used
-namespaces. (See USE-NAMESPACE.)
+namespaces.
+
+At the end of the file, or at least before any top-level forms that
+rely on CLR symbols, you must call BIND-CLR-SYMBOLS. This arranges for
+the symbols that were referenced via the reader syntax to be bound to
+their CLR concepts when a compiled file is loaded. Passing an optional
+true value to BIND-CLR-SYMBOLS causes the names of referenced types
+and members to be printed at compile-time.
+
 
 ----------------------------------------------------------------------------
 

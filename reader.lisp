@@ -34,9 +34,28 @@
 
 (in-package :cl-clr)
 
-(defvar *previous-readtables* nil
-  "A stack which holds previous readtables that were pushed down
-by ENABLE-CLR-SYNTAX.")
+(defclass reader-context ()
+  ((previous-readtable :accessor previous-readtable :initform *readtable*)
+   (referenced-types   :accessor types              :initform nil)
+   (referenced-members :accessor members            :initform nil)
+   (used-namespaces    :accessor namespaces         :initform nil)))
+
+(defvar *contexts* nil
+  "A stack which holds contexts for the CL-CLR reader. The
+topmost context is the current one.")
+
+(defun current-context ()
+  (car *contexts*))
+
+(defun push-context ()
+  (push (make-instance 'reader-context) *contexts*))
+
+(defun pop-context ()
+  (cond
+    (*contexts* (setf *readtable* (previous-readtable (car *contexts*)))
+                (pop *contexts*))
+    (t (setf *readtable* (copy-readtable nil))))
+  (values))
 
 (defconstant +whitespace-char-list+
              '(#\Space #\Tab #\Linefeed #\Newline #\Return #\Page)
@@ -49,31 +68,7 @@ by ENABLE-CLR-SYNTAX.")
 (defun lookup-type-symbol (type-name)
   (get-type-symbol
    (find-type-from-name type-name
-                        (namespaces-used-by-package *package*))))
-
-(defvar *namespace-hash* (make-hash-table)
-  "Mapping of package to namespaces used in that package.")
-
-(defun namespaces-used-by-package (&optional (package *package*))
-  "Returns the list of namespaces being used by PACKAGE, which
-defaults to *PACKAGE*. The list of used namespaces only affects
-the CL-CLR reader."
-  (gethash (find-package package) *namespace-hash*))
-
-(defun %use-namespace (namespace &optional (package *package*))
-  (setf package (find-package package))
-  (pushnew namespace
-           (gethash package *namespace-hash*)
-           :test #'equal))
-
-(defun %unuse-namespace (namespace &optional (package *package*))
-  (setf package (find-package package))
-  (setf (gethash package *namespace-hash*)
-        (remove namespace (gethash package *namespace-hash*) :test #'equal)))
-
-(defun %unuse-all-namespaces (&optional (package *package*))
-  (setf package (find-package package))
-  (setf (gethash package *namespace-hash*) nil))
+                        (namespaces (current-context)))))
 
 (defun read-clr-name (stream)
   (loop
@@ -101,15 +96,15 @@ the CL-CLR reader."
 
 (defun read-clr-member (stream &optional char)
   (declare (ignorable char))
-  (let ((member-symbol (get-member-symbol (read-clr-name stream))))
-    (import member-symbol *package*)
-    member-symbol))
+  (let ((symbol (get-member-symbol (read-clr-name stream))))
+    (pushnew symbol (members (current-context)))
+    symbol))
 
 (defun read-clr-type (stream &optional char)
   (declare (ignorable char))
-  (let ((type-symbol (lookup-type-symbol (read-clr-name stream))))
-    (import type-symbol *package*)
-    type-symbol))
+  (let ((symbol (lookup-type-symbol (read-clr-name stream))))
+    (pushnew symbol (types (current-context)))
+    symbol))
 
 (defun read-clr-token (stream &optional char)
   (declare (ignorable char))
@@ -119,52 +114,47 @@ the CL-CLR reader."
         (read-clr-type stream char))))
 
 (defun %enable-clr-syntax (&optional (macro-char #\?))
-  "Internal function used to enable reader syntax and store
-current readtable on stack. MACRO-CHAR is the character used to
-prefix CLR names, and defaults to the question mark."
+  "Internal function used to enable reader syntax and push a new
+context for it. MACRO-CHAR is the character used to prefix CLR
+names, and defaults to the question mark."
+  ;; Note that the settable macro-char feature isn't accessible right
+  ;; now.
   (setf *readtable* (copy-readtable))
-  (push *readtable*
-        *previous-readtables*)
   (set-macro-character macro-char #'read-clr-token t)
   (values))
 
-(defun %disable-clr-syntax ()
-  "Internal function used to restore previous readtable. "
-  (if *previous-readtables*
-      (setf *readtable* (pop *previous-readtables*))
-      (setf *readtable* (copy-readtable nil)))
-  (values))
+;----------------------------------------------------------------------------
 
-(defmacro enable-clr-syntax ()
-  "Enables CLR reader syntax."
-  '(eval-when (:compile-toplevel :load-toplevel :execute)
-    (%enable-clr-syntax)))
+(defmacro use-namespaces (&rest namespaces)
+  "Enables the CL-CLR reader syntax, and sets the list of
+namespaces to be searched by the reader to resolve unqualified
+type names. If the reader syntax was previously enabled, the
+previous list is saved and restored after a call to
+BIND-REFERENCED-TYPES. A call to USE-NAMESPACES should usually
+appear at the top of a file. The file should end with a call to
+BIND-REFERENCED-TYPES."
+  `(eval-when (:compile-toplevel :execute)
+     (push-context)
+     (setf (namespaces (current-context)) ',namespaces)
+     (%enable-clr-syntax)))
 
-(defmacro disable-clr-syntax ()
-  "Restores the readtable which was active before the last call to
-ENABLE-CLR-SYNTAX. If there was no such call, the standard readtable
-is used."
-  '(eval-when (:compile-toplevel :load-toplevel :execute)
-    (%disable-clr-syntax)))
-
-(defmacro use-namespace (namespace &optional (package *package*))
-  "Adds a namespace name to the list of namespaces being
-used by PACKAGE, which defaults to *PACKAGE*. The list of used
-namespaces only affects the CL-CLR reader. Returns the new list."
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (%use-namespace ,namespace ,package)))
-
-(defmacro unuse-namespace (namespace &optional (package *package*))
-  "Removes a namespace name from the list of namespaces being
-used by PACKAGE, which defaults to *PACKAGE*. The list of used
-namespaces only affects the CL-CLR reader. Returns the new list."
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (%unuse-namespace ,namespace ,package)))
-
-(defmacro unuse-all-namespaces (&optional (package *package*))
-  "Removes all namespace names from the list of namespaces being
-used by PACKAGE, which defaults to *PACKAGE*. The list of used
-namespaces only affects the CL-CLR reader. Returns the new list."
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (%unuse-all-namespace ,package)))
-
+(defmacro bind-clr-symbols (&optional dump)
+  "Disables the reader syntax, and discards the list of
+namespaces to be searched by the reader. Also arranges, at load
+time, to search for any referenced types in currently loaded
+assemblies and bind them to Lisp symbols that were produced by
+the reader. This should only be called after USE-NAMESPACE, and
+usually as the last top-level form in a file."
+  `(progn
+     (eval-when (:load-toplevel :execute)
+       (map nil #'bind-type-symbol ',(types (current-context)))
+       (map nil #'bind-member-symbol ',(members (current-context)))
+     (eval-when (:compile-toplevel :execute)
+       ,@(when dump
+              `((format t "~&The following CLR types were referenced:~%~{  ~A~%~}"
+                        (map 'list #'get-type-name-from-symbol
+                           ',(types (current-context))))
+                (format t "~&The following CLR members were referenced:~%~{  ~A~%~}"
+                        (map 'list #'symbol-name
+                             ',(members (current-context))))))
+       (pop-context)))))

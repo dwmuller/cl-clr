@@ -6,9 +6,7 @@
 (in-package :cl-user)
 (use-package :cl-clr)
 
-(use-namespace "System")
-
-(enable-clr-syntax)
+(use-namespaces "System")
 
 (defun print-assemblies ()
   (let ((app (?.CurrentDomain '?AppDomain))) ;static prop
@@ -25,7 +23,7 @@
   (print-assemblies)
   (values))
 
-(disable-clr-syntax)
+(bind-clr-symbols)
 
 (clr-test1)
 (shutdown-clr)
