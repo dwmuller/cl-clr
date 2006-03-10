@@ -49,46 +49,61 @@ namespace-qualified name string of a CLR type."
 
 (defun invoke-member (object member-name &rest args)
   (let ((result
-         (if (symbolp object)
-             (invoke (get object 'clr-type)
-                     "InvokeMember"
-                     member-name
-                     *static-member-binding-flags*
-                     *default-binding-object*
-                     *null-object*
-                     (list-to-rdnzl-array args))
-             (invoke (invoke object "GetType")
-                     "InvokeMember"
-                     member-name
-                     *instance-member-binding-flags*
-                     *default-binding-object*
-                     object
-                     (list-to-rdnzl-array args)))))
-    (if (container-p result)
-        (unbox (force-type result))
-        result)))
+         (rdnzl-handler-case
+          (if (symbolp object)
+              (invoke (get object 'clr-type)
+                      "InvokeMember"
+                      member-name
+                      *static-member-binding-flags*
+                      *default-binding-object*
+                      *null-object*
+                      (list-to-rdnzl-array args))
+              (invoke (invoke object "GetType")
+                      "InvokeMember"
+                      member-name
+                      *instance-member-binding-flags*
+                      *default-binding-object*
+                      object
+                      (list-to-rdnzl-array args)))
+          ("System.Reflection.TargetInvocationException"
+           (err)
+           ;; Unwrap the inner exception; the caller isn't interested
+           ;; in the fact that the call occurred via reflection.
+           (signal 'rdnzl-error
+                   :exception
+                   (property err "InnerException"))))))
+        (if (container-p result)
+            (unbox (force-type result))
+            result)))
   
 (defun set-member (new-value object member-name &rest indexes)
-  ;; This could be done much faster using some of RDNZL's internals.
-  (if (symbolp object)
-      ;; Note: Unlike in RDNZL, we have the type object
-      ;; already.
-      (invoke (get object 'clr-type)
-              "InvokeMember"
-              member-name
-              *static-set-prop-or-field-binding-flags*
-              *default-binding-object*
-              *null-object*
-              ;; Sadly, new-value has to come after the indexes.
-              (list-to-rdnzl-array (append indexes (list new-value))))
-      (invoke (invoke object "GetType")
-              "InvokeMember"
-              member-name
-              *instance-set-prop-or-field-binding-flags*
-              *default-binding-object*
-              object
-              ;; Sadly, new-value has to come after the indexes.
-              (list-to-rdnzl-array (append indexes (list new-value)))))
+  (rdnzl-handler-case
+   (if (symbolp object)
+       ;; Note: Unlike in RDNZL, we have the type object
+       ;; already.
+       (invoke (get object 'clr-type)
+               "InvokeMember"
+               member-name
+               *static-set-prop-or-field-binding-flags*
+               *default-binding-object*
+               *null-object*
+               ;; Sadly, new-value has to come after the indexes.
+               (list-to-rdnzl-array (append indexes (list new-value))))
+       (invoke (invoke object "GetType")
+               "InvokeMember"
+               member-name
+               *instance-set-prop-or-field-binding-flags*
+               *default-binding-object*
+               object
+               ;; Sadly, new-value has to come after the indexes.
+               (list-to-rdnzl-array (append indexes (list new-value)))))
+   ("System.Reflection.TargetInvocationException"
+    (err)
+    ;; Unwrap the inner exception; the caller isn't interested
+    ;; in the fact that the call occurred via reflection.
+    (signal 'rdnzl-error
+            :exception
+            (property err "InnerException"))))
   (apply #'invoke-member object member-name indexes))
 
 (defun get-namespace-package (namespace)
