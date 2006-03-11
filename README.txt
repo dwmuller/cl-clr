@@ -91,20 +91,23 @@ The reader expands CLR names prefixed by a question mark, like this:
 
 What             Syntax                   Expansion
 ---------------------------------------------------
-type:            ?+typename               type-sym
-member:          ?membername              member-sym
+type:            ?typename                type-symbol
+member:          ?.membername             member-symbol
 
 Type names can be either namespace-qualified, or simple. If simple,
 they must uniquely identify a type in one of the currently used
-namespaces.
+namespaces. The reader resolves type names during the read phase, and
+signals a clear error if a type name cannot be resolved or if it has
+multiple possible resolutions.
 
-At the end of the file, or at least before any top-level forms that
-rely on CLR symbols, you must call BIND-CLR-SYMBOLS. This arranges for
-the symbols that were referenced via the reader syntax to be bound to
-their CLR concepts when a compiled file is loaded. Passing an optional
-true value to BIND-CLR-SYMBOLS causes the names of referenced types
-and members to be printed at compile-time.
-
+At the end of the file, or at least before any top-level forms are
+evaluated that rely on CLR symbols, you must call
+BIND-CLR-SYMBOLS. This expands to a form that arranges for the symbols
+that were referenced via the reader syntax to be bound to their CLR
+concepts when a compiled file is loaded. Passing an optional true
+value to BIND-CLR-SYMBOLS causes the names of referenced types and
+members to be printed at compile-time, which can be a useful
+cross-reference.
 
 ----------------------------------------------------------------------------
 

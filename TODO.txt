@@ -7,32 +7,24 @@ investigate" than "to do".
   type is Object, so that's the type that resulting containers will
   have. INVOKE-MEMBER casts to the dynamically-determined type.
 
-- The item above point raises an interesting point. RDNZL follows
-  Pinto's approach in keeping the 'declared' or 'apparent' type with
-  an object reference, and using that as the basis for member
-  lookups. This follows the model of statically-typed languages like
-  C#. I wonder if this is worthwhile. I think the situations where a
-  fully dynamic approach causes problems are rare, and can be
-  addressed through a separate, explicit mechanism. (E.g. a TREAT-AS
-  wrapper.) If this were abandoned, the implementation could be much
-  more efficient. In fact, the DotNetContainer and DotNetReference
-  classes could go away entirely, using (GC-locked) CLR object
-  references directly!
+- The item above raises an interesting point. RDNZL follows Pinto's
+  approach in keeping the 'declared' or 'apparent' type with an object
+  reference, and using that as the basis for member lookups. This
+  follows the model of statically-typed languages like C#. I wonder if
+  this is worthwhile. I think the situations where a fully dynamic
+  approach causes problems are rare, and can be addressed through a
+  separate, explicit mechanism. (E.g. a TREAT-AS wrapper.) If this
+  were abandoned, the implementation could be much more efficient. In
+  fact, the DotNetContainer and DotNetReference classes could go away
+  entirely, using (GC-locked) CLR object references directly!
 
   I have tweaked CL-CLR so that it consistently casts returned
   containers to the run-time type, in order to experiment with this.
 
 - In GET-TYPE-SYMBOL, check efficiency. Perhaps use binding flags to
   limit to members of interest -- although ultimately all public
-  member of interest? Handle nested types if they're included in the
-  member list. (I doubt they are.)
-
-- UNUSE-NAMESPACE does not attempt to remove type or member symbols
-  from the target package. Member symbols would be difficult to do,
-  but types would easily be possible. Should it do so? This would be
-  more analogous to UNUSE-PACKAGE.
-
-- Separate 'importing' from 'binding'.
+  members are of interest? Handle nested types if they're included in
+  the member list. (I doubt they are.)
 
 - Add event support.
 
@@ -59,27 +51,26 @@ investigate" than "to do".
   - Read as an uninterned symbol to find out what the reader makes of it.
   - Use the resulting symbol's name directly to find candidates.
 
-- Or: Abandon the reader. Depends on how valuable the incremental
-  loading is. Have to get some stats on how heavy a load the extra
-  packages and symbols impose on an image.
+- Automatic run-time incremental caching of candidate member info
+  sets, in a member or type symbol property.  See
+  System.Reflection.Binder.BindToMethod and BindToField for some ideas
+  on why this would be useful. (For properties, perhaps need to use
+  the set/get method names?)
 
-- Automatic caching of candidate member info sets, in a member or
-  type symbol property.  See System.Reflection.Binder.BindToMethod
-  and BindToField for some ideas on why this would be useful. (For
-  properties, perhaps need to use the set/get method names?)
+- Allow strings to be provided where member or type objects are now
+  required? Of course, the above-mentioned caching of member info
+  won't happen in such cases. I'm not terribly interested in this,
+  actually, but maybe others see a need for it.
 
-- Allow strings to be provided where member or type objects are
-  now required. Of course, the above-mentioned caching of member
-  info won't happen in such cases.
-
-- A custom binder could provide a more elegant and correct solution to
+- A custom Binder could provide a more elegant and correct solution to
   the LispWorks single/double float problem, sacrificing precision
   only when necessary to find a signature match.
 
-- Define member symbols as macros rather than functions. Expand them
-  to unique symbols defined such that they can still serve as member
-  symbols, but also represent a unique calling site that
-  self-optimizes the member lookup at runtime.
+- Define member symbols as macros rather than functions. Expansion
+  could include a unique symbol defined such that it could represent a
+  unique calling site that self-optimizes the member lookup at
+  runtime. Unfortunately, and perhaps terminally so, this would
+  preclude the use of member symbols with functions like APPLY or MAP.
 
 
 Testing TODO:
