@@ -109,6 +109,35 @@ value to BIND-CLR-SYMBOLS causes the names of referenced types and
 members to be printed at compile-time, which can be a useful
 cross-reference.
 
+Here is an example that creates a Direct3D device:
+
+(use-namespaces "System"
+                "System.Drawing"
+                "System.Windows.Forms"
+                "Microsoft.DirectX"
+                "Microsoft.DirectX.Direct3D")
+
+...
+
+(defun make-device (form)
+  (let ((presentParams (new '?PresentParameters)))
+    (setf (?.Windowed presentParams) t
+          (?.SwapEffect presentParams) (?.Discard '?SwapEffect))
+    (new '?Device
+         0
+         (?.Hardware '?DeviceType)
+         form
+         (?.SoftwareVertexProcessing '?CreateFlags)
+         presentParams)))
+...
+
+(bind-clr-symbols t)
+
+Notice that fields, properties, and methods are all treated uniformly
+like functions or accessors, regardless of whether they are static or
+per-instance. To access static members, a type-symbol stands in the
+place where an object instance would otherwise be given.
+
 ----------------------------------------------------------------------------
 
 Motivations for this project.
