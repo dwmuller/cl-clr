@@ -28,5 +28,8 @@
                         :depends-on ("packages"
                                      "symbols"
                                      "types"))
+                 (:file "util"
+                        :depends-on ("packages"
+                                     "reader"))
                  (:system "rdnzl"))
     :depends-on ("rdnzl"))

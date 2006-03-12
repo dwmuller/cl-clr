@@ -169,20 +169,20 @@ as a designator for that CLR type. Returns the symbol."
 type object. Returns a symbol to represent the type. The symbol
 is interned in a namespace package, and symbols for its members
 are imported into that package from CLR-SYMBOLS."
-  (let* ((type-object (cond ((stringp type)
-                             (find-type-from-namespace-qualified-name type))
-                            ((container-p type) type)
-                            (t (error "Expected TYPE to be a CLR type object or qualified type name string."))))
-         (namespace   (property type-object "Namespace"))
-         (type-name   (property type-object "Name"))
-         (package     (get-namespace-package namespace)))
-    (multiple-value-bind (type-symbol status) (intern type-name package)
-      (unless (eq status :external)
-        (bind-type-symbol type-symbol type-object)
-        (export type-symbol package)
-        (import (get type-symbol 'clr-members) package)
-        (export (get type-symbol 'clr-members) package))
-      type-symbol)))
+  (let ((type-object (cond ((stringp type)
+                            (find-type-from-namespace-qualified-name type))
+                           ((container-p type) type)
+                           (t (error "Expected TYPE to be a CLR type object or qualified type name string.")))))
+    (multiple-value-bind (namespace type-name)
+        (split-type-name (property type-object "FullName"))
+      (let ((package     (get-namespace-package namespace)))
+        (multiple-value-bind (type-symbol status) (intern type-name package)
+          (unless (eq status :external)
+            (bind-type-symbol type-symbol type-object)
+            (export type-symbol package)
+            (import (get type-symbol 'clr-members) package)
+            (export (get type-symbol 'clr-members) package))
+          type-symbol)))))
 
 (defun get-type-object (type)
   "Given the namespace-qualified name string of a CLR type,
@@ -206,7 +206,9 @@ other cases."
 found in the currently loaded assemblies of the current
 application domain.  Returns the namespace package."
   (let ((package (get-namespace-package namespace)))
-    (do-rdnzl-array (assembly (invoke "System.AppDomain" "CurrentDomain"))
+    (do-rdnzl-array (assembly (invoke (property "System.AppDomain"
+                                                "CurrentDomain")
+                                      "GetAssemblies"))1
       (do-rdnzl-array (type-object (invoke assembly "GetTypes"))
         (when (zerop (search namespace (property type-object "FullName")))
           (get-type-symbol type-object) package)))

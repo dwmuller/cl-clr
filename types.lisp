@@ -13,13 +13,13 @@
      with escaped = nil
      for pos from start below (or end (length string))
      for candidate = (aref string pos)
-     until (and (not escaped)
-                (eql char candidate))
      do
        (cond
          (escaped              (setf escaped nil))
          ((eql candidate char) (return-from unescaped-char-position pos))
-         ((eql #\\ candidate)  (setf escaped t))))
+         ((eql #\\ candidate)  (setf escaped t)))
+     until (and (not escaped)
+                (eql char candidate)))
   nil)
 
 (defun find-assembly-separator (type-name)
@@ -91,7 +91,8 @@ INIT-TYPE-OBJECTS."
     (do-rdnzl-array
         (assembly (invoke app-domain "GetAssemblies"))
       (let ((type (invoke assembly "GetType" type-name)))
-        (when (and type (property type "IsPublic"))
+        (when (and type (or (property type "IsPublic")
+                            (property type "IsNestedPublic")))
           (typecase result
             (null (setf result type))
             (list (push type result))
@@ -126,7 +127,8 @@ the type is not found, or if it is ambiguous."
               (assembly (invoke app-domain "GetAssemblies"))
             (let ((type (invoke assembly "GetType" qualified-name)))
               (when (and type
-                         (property type "IsPublic"))
+                         (or (property type "IsPublic")
+                             (property type "IsNestedPublic")))
                 (typecase result
                   (null (setf result type))
                   (t (push type result))

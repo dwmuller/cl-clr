@@ -23,8 +23,7 @@ investigate" than "to do".
 
 - In GET-TYPE-SYMBOL, check efficiency. Perhaps use binding flags to
   limit to members of interest -- although ultimately all public
-  members are of interest? Handle nested types if they're included in
-  the member list. (I doubt they are.)
+  members are of interest? 
 
 - Add event support.
 

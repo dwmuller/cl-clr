@@ -25,6 +25,8 @@
            :init-clr
            :load-assembly
            :new
+           :print-members
+           :print-types
            :shutdown-clr
 
            ;; Related to the alternative reader:
