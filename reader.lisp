@@ -133,7 +133,7 @@ previous list is saved and restored after a call to
 BIND-REFERENCED-TYPES. A call to USE-NAMESPACES should usually
 appear at the top of a file. The file should end with a call to
 BIND-REFERENCED-TYPES."
-  `(eval-when (:compile-toplevel :execute)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
      (push-context)
      (setf (namespaces (current-context)) ',namespaces)
      (%enable-clr-syntax)))

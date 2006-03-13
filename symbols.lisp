@@ -104,7 +104,7 @@ namespace-qualified name string of a CLR type."
     (signal 'rdnzl-error
             :exception
             (property err "InnerException"))))
-  (apply #'invoke-member object member-name indexes))
+  new-value)
 
 (defun get-namespace-package (namespace)
   "Given a CLR namespace name, return the package that represents

@@ -1,5 +1,5 @@
 
-CL-CLR is a package for facilitating interaction between Common Lisp
+CL-CLR is a package that facilitates interaction between Common Lisp
 programs and libraries that conform to the Common Language
 Specification, running on the Common Language Runtime. It is built on
 RDNZL, an excellent package that already solves all of the essential
@@ -52,9 +52,8 @@ contents might not be complete.)
 CL-CLR does not distinguish between CLR fields, properties, and
 methods. They are all treated as functions on objects (if
 instance-scoped) or type symbols (if statically scoped). SETF forms
-will work with fields and properties in a natural manner.
-
-TODO: Events. Nested types.
+will work with fields and properties in a natural manner. (Although
+see the note under CLR Programming Gotchas.)
 
 Examples, assuming that the current package has imported the
 referenced CLR symbols from CLR-SYMBOLS:
@@ -73,10 +72,18 @@ referenced CLR symbols from CLR-SYMBOLS:
   (|CurrentDomain| '|System.AppDomain|)
   (setf (|CurrentDomain| '|System.AppDomain|) new-domain)
 
- The reader makes it possible to reference the symbols fairly
- conveniently, and provides both incremental definition of symbols
- and type name resolution against a used namespace list. See that
- file for details.
+Nested type names are denoted using the same conventions that are used
+internally by the CLR, using a plus sign to separate the containing
+type from the nested type:
+
+  (let ((silly-object (new '|OuterType+InnerType+InnermostType|)))
+    ...)
+
+The reader makes it possible to reference the symbols fairly
+conveniently, and provides both incremental definition of symbols and
+type name resolution against a used namespace list. See that file for
+details.
+
 
 ----------------------------------------------------------------------------
 The alternative reader syntax.
@@ -96,9 +103,10 @@ member:          ?.membername             member-symbol
 
 Type names can be either namespace-qualified, or simple. If simple,
 they must uniquely identify a type in one of the currently used
-namespaces. The reader resolves type names during the read phase, and
-signals a clear error if a type name cannot be resolved or if it has
-multiple possible resolutions.
+namespaces. (No partial namespace qualification is allowed.) The
+reader resolves type names during the read phase, and signals a clear
+error if a type name cannot be resolved or if it has multiple possible
+resolutions.
 
 At the end of the file, or at least before any top-level forms are
 evaluated that rely on CLR symbols, you must call
@@ -139,6 +147,42 @@ per-instance. To access static members, a type-symbol stands in the
 place where an object instance would otherwise be given.
 
 ----------------------------------------------------------------------------
+CLR Programming Gotchas
+
+You must be very careful when working with struct types. They behave
+differently from classes.
+
+A good example occurs when working with an array of structs. Assume we
+have a Point class with field members X, Y, and Z. Let's create an
+array of three points:
+
+(let ((parray (?.CreateInstance '?System.Array
+                                (get-type-object '?Point)
+				3)))
+  ...
+
+Now, let's set the first point, assuming we have a constructor
+for Point that takes the initial values for X, Y, and Z:
+
+  (setf (aref* parray 0) (new '?Point 25 12 50))
+
+This works fine. Our next attempt, to modify one of the fields, will
+silently fail:
+
+  (setf (?.X (aref* parray 0)) 10)
+
+Why? Because Point is a structure. AREF* actually returns a boxed copy
+of the first point in PARRAY; we end up modifying the X value of this
+copy, which is immediately lost. The original Point in PARRAY is never
+touched. The first form, (setf (aref* ...) ...), works because a SETF
+function is defined for AREF*.
+
+There are other situations in which this unexpected boxing of structs
+can cause problems. It's a headache for all CLR programmers, but
+CL-CLR's dynamic method of interacting with objects can exacerbate the
+problems.
+
+----------------------------------------------------------------------------
 
 Motivations for this project.
 
@@ -160,9 +204,8 @@ This project is an attempt to provide a layer on RDNZL that provides:
 - .. uniform syntax for properties and fields (and, in fact, all
   members).
 
-- Elimination of the need to lookup types from names, in all common
-  usage cases.
-
+- Elimination of the need to lookup types from names, other than
+  during reading or loading, in all common usage cases.
 
 Some of these features could be incorporated directly in RDNZL, and in
 fact could perform better that way.
