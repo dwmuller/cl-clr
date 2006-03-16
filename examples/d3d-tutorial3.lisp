@@ -98,7 +98,7 @@
     (on-create-vertex-buffer this vertex-buffer nil)))
   
 (defmethod on-reset-device ((this matrices) sender e)
-  (with-slots (device vertex-buffer) this
+  (with-slots (device) this
     (setf (?.CullMode (?.RenderState device)) (?.None '?Cull)
           (?.Lighting (?.RenderState device)) nil)))
                                
