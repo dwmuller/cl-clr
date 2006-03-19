@@ -37,6 +37,18 @@ namespace-qualified name string of a CLR type."
                      type)))
          args))
 
+(defun make-null-object (type)
+  (rdnzl:make-null-object
+   (property
+    (cond
+      ((symbolp type) (get-type-object type))
+      ((container-p type) type)
+      ((stringp type) (find-type-from-namespace-qualified-name type))
+      (t (error "~S is not a symbol, CLR object, or string designating a CLR type."
+                type)))
+    "FullName")))
+                            
+
 (defun binding-flag (name)
   (field "System.Reflection.BindingFlags" name))
 

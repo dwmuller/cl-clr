@@ -8,6 +8,7 @@
   ;; versions:
   (:shadow :import-type
            :load-assembly
+           :make-null-object
            :new
            )
   (:export :bind-namespace
@@ -24,6 +25,7 @@
            :is-namespace-qualified-type-name
            :init-clr
            :load-assembly
+           :make-null-object
            :new
            :print-members
            :print-types
@@ -53,7 +55,7 @@
            ;:init-rdnzl
            ;:load-assembly
            :list-to-rdnzl-array
-           :make-null-object
+           ;:make-null-object
            ;:new
            :or-enums
            :property
