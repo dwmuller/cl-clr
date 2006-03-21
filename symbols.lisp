@@ -24,6 +24,19 @@
 (defvar *instance-member-binding-flags* nil)
 (defvar *instance-set-prop-or-field-binding-flags* nil)
                      
+(define-rdnzl-call generic-invoke-member
+    (:dotnet-name "InvokeMember")
+  ((type "System.Type")
+   (name "System.String")
+   (invoke-attr "System.Reflection.BindingFlags")
+   (binder "System.Reflection.Binder")
+   (target "System.Object")
+   (args   "System.Object[]")))
+
+(define-rdnzl-call get-type
+    ()
+  ((object "System.Object")))
+
 (defun new (type &rest args)
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
@@ -56,27 +69,25 @@ namespace-qualified name string of a CLR type."
   "A hack to experiment with always using the run-time type,
   rather than the apparent type, for containers."
   (if (container-p obj)
-      (cast obj (invoke obj "GetType"))
+      (cast obj (get-type obj))
       obj))
 
 (defun invoke-member (object member-name &rest args)
   (let ((result
          (rdnzl-handler-case
           (if (symbolp object)
-              (invoke (get object 'clr-type)
-                      "InvokeMember"
-                      member-name
-                      *static-member-binding-flags*
-                      *default-binding-object*
-                      *null-object*
-                      (list-to-rdnzl-array args))
-              (invoke (invoke object "GetType")
-                      "InvokeMember"
-                      member-name
-                      *instance-member-binding-flags*
-                      *default-binding-object*
-                      object
-                      (list-to-rdnzl-array args)))
+              (generic-invoke-member (get object 'clr-type)
+                                     member-name
+                                     *static-member-binding-flags*
+                                     *default-binding-object*
+                                     *null-object*
+                                     (list-to-rdnzl-array args))
+              (generic-invoke-member (get-type object)
+                                     member-name
+                                     *instance-member-binding-flags*
+                                     *default-binding-object*
+                                     object
+                                     (list-to-rdnzl-array args)))
           ("System.Reflection.TargetInvocationException"
            (err)
            ;; Unwrap the inner exception; the caller isn't interested
@@ -93,22 +104,22 @@ namespace-qualified name string of a CLR type."
    (if (symbolp object)
        ;; Note: Unlike in RDNZL, we have the type object
        ;; already.
-       (invoke (get object 'clr-type)
-               "InvokeMember"
-               member-name
-               *static-set-prop-or-field-binding-flags*
-               *default-binding-object*
-               *null-object*
-               ;; Sadly, new-value has to come after the indexes.
-               (list-to-rdnzl-array (append indexes (list new-value))))
-       (invoke (invoke object "GetType")
-               "InvokeMember"
-               member-name
-               *instance-set-prop-or-field-binding-flags*
-               *default-binding-object*
-               object
-               ;; Sadly, new-value has to come after the indexes.
-               (list-to-rdnzl-array (append indexes (list new-value)))))
+       (generic-invoke-member (get object 'clr-type)
+                              member-name
+                              *static-set-prop-or-field-binding-flags*
+                              *default-binding-object*
+                              *null-object*
+                              ;; Sadly, new-value has to come after the indexes.
+                              (list-to-rdnzl-array (append indexes
+                                                           (list new-value))))
+       (generic-invoke-member (get-type object)
+                              member-name
+                              *instance-set-prop-or-field-binding-flags*
+                              *default-binding-object*
+                              object
+                              ;; Sadly, new-value has to come after the indexes.
+                              (list-to-rdnzl-array (append indexes
+                                                           (list new-value)))))
    ("System.Reflection.TargetInvocationException"
     (err)
     ;; Unwrap the inner exception; the caller isn't interested
@@ -210,7 +221,7 @@ other cases."
                             (setf (get type 'clr-type)
                                   (find-type-from-namespace-qualified-name
                                    (get-type-name-from-symbol type)))))
-        ((container-p type) (force-type (invoke type "GetType")))
+        ((container-p type) (force-type (get-type type)))
         (t (error "Expected string, symbol, or CLR object for TYPE."))))
 
 (defun bind-namespace (namespace)
