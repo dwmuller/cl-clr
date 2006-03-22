@@ -23,6 +23,30 @@
 (defvar *static-set-prop-or-field-binding-flags* nil)
 (defvar *instance-member-binding-flags* nil)
 (defvar *instance-set-prop-or-field-binding-flags* nil)
+
+(defmacro define-clr-call (lisp-name
+                           (&key clr-name
+                                 type-name
+                                 member-kind
+                                 doc-string)
+                           args)
+  `(define-rdnzl-call
+       ,lisp-name
+       (,@(when clr-name (list :dotnet-name clr-name))
+        ,@(when type-name (list :type-name
+                                (if (symbolp type-name)
+                                    (property (get-type-object type-name)
+                                              "AssemblyQualifiedName")
+                                    type-name)))
+        ,@(when member-kind (list :member-kind member-kind))
+        ,@(when doc-string (list :doc-string doc-string)))
+     ,(map 'list #'(lambda (arg-spec)
+                     (if (symbolp (second arg-spec))
+                         (list (first arg-spec)
+                               (property (get-type-object (second arg-spec))
+                                         "AssemblyQualifiedName"))
+                         arg-spec))
+           args)))
                      
 (define-rdnzl-call generic-invoke-member
     (:dotnet-name "InvokeMember")

@@ -13,6 +13,7 @@
            )
   (:export :bind-namespace
            :def-namespaces
+           :define-clr-call
            :do-assemblies
            :find-type-from-namespace-qualified-name
            :find-type-from-name
@@ -41,7 +42,7 @@
            :box
            :cast
            :container-p
-           :define-rdnzl-call
+           ;:define-rdnzl-call
            ;:disable-rdnzl-syntax
            :do-rdnzl-array
            ;:enable-rdnzl-syntax
