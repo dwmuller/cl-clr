@@ -1,3 +1,6 @@
+$Header:$
+
+Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
 CL-CLR is a package that facilitates interaction between Common Lisp
 programs and libraries that conform to the Common Language
@@ -147,7 +150,7 @@ per-instance. To access static members, a type-symbol stands in the
 place where an object instance would otherwise be given.
 
 ----------------------------------------------------------------------------
-CLR Programming Gotchas
+CLR Struct types
 
 You must be very careful when working with struct types. They behave
 differently from classes.
@@ -181,6 +184,17 @@ There are other situations in which this unexpected boxing of structs
 can cause problems. It's a headache for all CLR programmers, but
 CL-CLR's dynamic method of interacting with objects can exacerbate the
 problems.
+
+----------------------------------------------------------------------------
+
+Reader Dependence
+
+Be aware that if you use the reader syntax, you won't be able to
+redefine functions that depend on it without loading the entire
+file. This reminder is relevant if you use Slime or some other
+development environment that allows you to evaluate a fragment of code
+from a file. The CLR symbols will be mis-interpreted as symbols that
+actually start with a question mark, causing run-time errors.
 
 ----------------------------------------------------------------------------
 

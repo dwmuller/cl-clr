@@ -1,3 +1,7 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
+;;;
 (in-package :cl-clr)
 
 (defun %load-assembly (&rest args)

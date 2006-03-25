@@ -1,3 +1,6 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
 ;;; Functions having to do with the manipulation of type names and
 ;;; looking up CLR type objects.

@@ -1,6 +1,9 @@
 Some of these items are more on the order of "wish" or "whacky idea to
 investigate" than "to do".
 
+- Add support for ASDF-INSTALL. I guess that requires that I get it
+  working on my WinXP box first. :-)
+
 - INVOKE-MEMBER has one, possibly serious, problem. It uses
   System.Type.InvokeMember, which is a great shortcut compared to
   looking up MemberInfo objects. Unfortunately, the declared return
@@ -21,32 +24,42 @@ investigate" than "to do".
   I have tweaked CL-CLR so that it consistently casts returned
   containers to the run-time type, in order to experiment with this.
 
-- In GET-TYPE-SYMBOL, check efficiency. Perhaps use binding flags to
-  limit to members of interest -- although ultimately all public
-  members are of interest? 
+- Add event support. Maybe. Using add_EventName and remove_EventName
+  seems to work just fine, and I'm not sure what should replace it
+  that would have syntax conforming to the rest of CL-CLR.
 
-- Add event support.
-
-- Allow overriding of the package name prefix for namespace packages.
+- Allow overriding of the package name prefix for namespace
+  packages. Maybe. This would require a number of changes.
 
 - Allow the addition of a namespace prefix on assembly contents when
-  loading (or binding?) an assembly. Track loaded assemblies?
+  loading (or binding?) an assembly. This allows working with
+  conflicting type names, and it's how C# deals with the problem (via
+  a compiler switch).
+
+- Track assemblies loaded via CL-CLR? This would allow users to load
+  assemblies without CL-CLR to omit them from type name searches.
 
 - Allow specifying how CLR names are translated to symbol names:
   :upcase, :downcase, :preserve, :invert, and :lisp to attempt
   conversion to Lisp-like naming conventions. Default to :preserve,
-  because it's the least likely to collide with Lisp names.
+  because it's the least likely to collide with Lisp names. Might want
+  to use alternate package name prefixes for the different strategies
+  (see earlier item).
 
 - Find out what, if anything, Edi would like to integrate into RDNZL
   from this. Need to work out with him what aspects are incompatible
   with current RDNZL semantics and syntax, and to what extent this is
   an issue. (How many RDNZL users are there? How open to change are
   they? Does Edi even think the ideas in CL-CLR worthwhile, or does he
-  see flaws that I've missed so far?)
+  see flaws that I've missed so far?) Unfortunately he's been too busy
+  recently to take a look.
 
-- Enhance SLIME's symbol completion logic. Possible algorithm:
-  - Make elisp code find symbol begin across escapes
-  - Close any open multi-escape.
+- Enhance SLIME's symbol completion logic. This would make the
+  non-reader approach more viable, typing names in directly with
+  escape (e.g. (|.GetType '|Application|), assuming the CLR!System
+  package is being used) Possible algorithm:
+  - Make elisp code find symbol begin across escapes.
+  - Close any open multi-escape before sending to SLIME.
   - Read as an uninterned symbol to find out what the reader makes of it.
   - Use the resulting symbol's name directly to find candidates.
 
@@ -63,7 +76,9 @@ investigate" than "to do".
 
 - A custom Binder could provide a more elegant and correct solution to
   the LispWorks single/double float problem, sacrificing precision
-  only when necessary to find a signature match.
+  only when necessary to find a signature match. This would need to be
+  incorporated in RDNZL, or an alternate bottom layer if CL-CLR moves
+  away from RDNZL.
 
 - Define member symbols as macros rather than functions. Expansion
   could include a unique symbol defined such that it could represent a

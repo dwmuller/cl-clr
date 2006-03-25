@@ -1,3 +1,6 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
 ;;; This reader provides an alternative to RDNZL's reader syntax. It
 ;;; uses a symbol-based approach, rather than form-based. More

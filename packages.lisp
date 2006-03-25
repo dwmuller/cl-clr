@@ -1,3 +1,7 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
+;;;
 (in-package :cl-user)
 
 (defpackage :common-lisp-common-language-runtime

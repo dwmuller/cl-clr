@@ -1,3 +1,6 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
 ;;; This file provides ASDF definitions for Common Lisp Common
 ;;; Language Runtime.

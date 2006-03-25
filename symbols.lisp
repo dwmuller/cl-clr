@@ -1,3 +1,6 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
 ;;; Functions to create and use symbols that represent CLR tokens.
 ;;;

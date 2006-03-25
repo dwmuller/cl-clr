@@ -1,3 +1,6 @@
+;;; $Header:$
+;;;
+;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;
 ;; Tests for CL-CLR.
 ;;
