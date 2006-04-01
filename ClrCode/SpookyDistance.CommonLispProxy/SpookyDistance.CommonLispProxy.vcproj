@@ -188,6 +188,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\LispBinder.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\SpookyDistance.CommonLispProxy.cpp"
 				>
 			</File>
@@ -217,6 +221,10 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File
+				RelativePath=".\LispBinder.h"
+				>
+			</File>
 			<File
 				RelativePath=".\resource.h"
 				>

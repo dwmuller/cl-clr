@@ -1,299 +1,351 @@
 // This is the main DLL file.
 
 #include "stdafx.h"
-#include <assert.h>
 #include "SpookyDistance.CommonLispProxy.h"
+#include "LispBinder.h"
+#include <assert.h>
 
 using namespace System;
 using namespace System::Reflection;
 using namespace System::Runtime::InteropServices;
 
-/*
-    This file is an experiment in an alternative to RDNZL. The main motivation was to build in
-    some reasonably efficient support for application domains. This is fairly difficult.
-    Instance method calls across application domains via marshalled-by-ref objects is easy,
-    but one has to take care that no object is unwrapped or unserialized in a domain unnecessarily,
-    since this causes CLR to try to load the supporting assembly for that object's type. My thinking
-    was that something like the RDNZL container could also serve as a cross-domain proxy to 
-    reference objects in other domains. The basic idea looks promising; you just need to make
-    sure that the code here is loadable in all participating domains, probably by installing it
-    in the GAC.
 
-    I stopped working on this because of some other hard questions that arose, which I don't have
-    answers to:
+ref class TreatAs
+{
+public:
+    Type^   effective_type;
+    Object^ value;
+};
 
-    - Object identity. RDNZL does not deal with this. Proxies (containers in RDNZL) mask identity
-      once, and the Lisp class used to identifiably contain proxy references and facilitate
-      finalization masks it some more. Working around this is expensive, involving hash table
-      lookups and weak references. Getting rid of the Lisp layer would require certain
-      implementation-specific features from the Lisp FFI and finalization system which I haven't
-      investigated. (Finalization is not a standard part of Lisp.)
+// This is used internally to convert an object into a handle that we can
+// safely give to the Lisp system.
+static inline void* GetHandleFromObject(Object^ object)
+{
+    if (object == nullptr)
+        return 0;
+    return GCHandle::ToIntPtr(GCHandle::Alloc(object)).ToPointer();
+}
 
-    - Reference arguments/parameters. To really capture the semantics of these correctly in Lisp,
-      every method invocation would have to be treated as a macro call, letting the caller
-      tag arguments as references. In the presence of such references, it would expand to an
-      invocation followed by SETF forms to updated the Lisp places with result values from
-      the reference parameters.
+// This is used to get the object referred to by a handle.
+static inline Object^ GetObjectFromHandle(void* handle)
+{
+    if (!handle)
+        return nullptr;
+    return safe_cast<Object^>(((GCHandle)IntPtr(handle)).Target);
+}
 
-*/
-namespace SpookyDistance {
-    namespace DomainHost {
+ // The Lisp system calls this to free an object for garbage collection.
+ void ReleaseObjectHandle(void* handle)
+{
+    if (handle)
+        ((GCHandle)IntPtr(handle)).Free();
+}
 
-        ref class InvocationResult;
+void InvokeMember(Type^ type,
+                  Object^ object,
+                  const wchar_t* name,
+                  int binding_flags,
+                  int n_args,
+                  void* arg_handles[],
+                  InvocationResult* result)
+{
+    array<Object^>^ args = gcnew array<Object^>(n_args);
+    for (int i = 0; i < n_args; ++i)
+        args[i] = GetObjectFromHandle(arg_handles);
+    Object^ returned = type->InvokeMember(gcnew String(name),
+                                          (BindingFlags)binding_flags,
+                                           nullptr, // default binder
+                                           object,
+                                           args);
+        result->caught_exception = 0;
+        result->object_handle = GetHandleFromObject(returned);
+}
+void SetMember(void* new_value_handle,
+               Type^ type,
+               Object^ object,
+               const wchar_t* name,
+               int binding_flags,
+               int n_args,
+               void* arg_handles[],
+               InvocationResult* result)
+{
+    array<Object^>^ args = gcnew array<Object^>(n_args + 1);
+    for (int i = 0; i < n_args; ++i)
+        args[i] = GetObjectFromHandle(arg_handles);
+    args[n_args] = GetObjectFromHandle(new_value_handle);
+    Object^ returned = type->InvokeMember(gcnew String(name),
+                                          (BindingFlags)binding_flags,
+                                           nullptr, // default binder
+                                           object,
+                                           args);
+        result->caught_exception = 0;
+        result->object_handle = GetHandleFromObject(returned);
+}
+//////////////////////////////////////////////////////////////////////////////
+// Exported entry points
 
-        ref class Proxy : MarshalByRefObject
+
+// Everything starts from an application domain object:
+void* GetRootAppDomain()
+{
+    return GetHandleFromObject(AppDomain::CurrentDomain);
+}
+void InvokeInstanceMember(void* object_handle,
+                          const wchar_t* name,
+                          int binding_flags,
+                          int n_args,
+                          void* arg_handles[],
+                          InvocationResult* result)
+{
+    try
+    {
+        Object^ object = GetObjectFromHandle(object_handle);
+        Type^ type = object->GetType();
+        InvokeMember(type, object, name, binding_flags, n_args,
+                    arg_handles, result);
+    }
+    catch (Exception^ e)
+    {
+        result->caught_exception = 1;
+        result->object_handle = GetHandleFromObject(e);
+    }
+}
+void InvokeStaticMember(void* type_handle,
+                        const wchar_t* name,
+                        int binding_flags,
+                        int n_args,
+                        void* arg_handles[],
+                        InvocationResult* result)
+{
+    try
+    {
+        Type^ type = (Type^)GetObjectFromHandle(type_handle);
+        InvokeMember(type, nullptr, name, binding_flags,
+                     n_args, arg_handles, result);
+    }
+    catch (Exception^ e)
+    {
+        result->caught_exception = 1;
+        result->object_handle = GetHandleFromObject(e);
+    }
+}
+void SetInstanceMember(void* new_value_handle,
+                       void* object_handle,
+                       const wchar_t* name,
+                       int binding_flags,
+                       int n_args,
+                       void* arg_handles[],
+                       InvocationResult* result)
+{
+    try
+    {
+        Object^ object = GetObjectFromHandle(object_handle);
+        Type^ type = object->GetType();
+        SetMember(new_value_handle, type, object,
+                  name, binding_flags, n_args,
+                  arg_handles, result);
+    }
+    catch (Exception^ e)
+    {
+        result->caught_exception = 1;
+        result->object_handle = GetHandleFromObject(e);
+    }
+}
+void SetStaticMember(void* new_value_handle,
+                     void* type_handle,
+                     const wchar_t* name,
+                     int binding_flags,
+                     int n_args,
+                     void* arg_handles[],
+                     InvocationResult* result)
+{
+    try
+    {
+        Type^ type = (Type^)GetObjectFromHandle(type_handle);
+        SetMember(new_value_handle, type, nullptr,
+                  name, binding_flags,
+                  n_args, arg_handles, result);
+    }
+    catch (Exception^ e)
+    {
+        result->caught_exception = 1;
+        result->object_handle = GetHandleFromObject(e);
+    }
+}
+
+ref class InvocableMemberPredicate {
+    LispBinder^ binder;
+    String^ name;
+    array<Object^>^ args;
+    bool allow_varying_args;
+public:
+    InvocableMemberPredicate(LispBinder^ b,
+                             String^ nm,
+                             bool allow_varargs,
+                             array<Object^>^ a)
+        : binder(b),
+          name(nm), allow_varying_args(allow_varargs),
+          args(a)
+    {
+    }
+    bool IsInvocable(MemberInfo^ member, Object^)
+    {
+        if (member->Name == name)
+            return true;
+        if (MethodBase^ method = safe_cast<MethodBase^>(member))
         {
-        public:
-            Proxy(Object^ object, Type^ declared_type)
-                : obj(object), type(declared_type)
+            if (method->IsSpecialName
+                && method->Name->EndsWith(name)
+                && method->Name->StartsWith("get_")
+                && method->Name->Length == (name->Length + 4))
             {
-            }
-            Proxy(Object^ object)
-                : obj(object), type(object->GetType())
-            {
-            }
-            Proxy^ ApparentType();
-            Type^ UnwrapApparentType();
-            Object^ UnwrapTarget();
-            InvocationResult^ InvokeMember(String^ member_name, array<Object^>^ args);
-        private:
-            Object^ obj;
-            Type^ type;
-        };
-
-        ref class InvocationResult : MarshalByRefObject
-        {
-        public:
-            static InvocationResult^ TheNullResult = gcnew InvocationResult(nullptr);
-            static InvocationResult^ TheVoidResult = gcnew InvocationResult(nullptr);
-
-            InvocationResult(Proxy^ obj, bool exception)
-                :IsException(exception), result(obj) {} 
-            InvocationResult(Proxy^ obj)
-                :IsException(false), result(obj) {} 
-
-            bool IsException;
-            property bool IsNull {
-                bool get() {return this == TheNullResult;}
-            }
-            property bool IsVoid {
-                bool get() {return this == TheVoidResult;}
-            }
-            Proxy^ result;
-
-        };
-
-        static void UnwrapArg(Object^ arg, Object^& real_arg)
-        {
-            if (Proxy^ proxy = safe_cast<Proxy^>(arg))
-            {
-                real_arg = proxy->UnwrapTarget();
-            }
-            else
-            {
-                // Not yet sure if we should ever get here. Perhaps simple types
-                // and/or marshal-by-value types won't be wrapped in a proxy.
-                assert(0); 
-                real_arg = arg;
+                return binder->ArgsConformToParams(method->GetParameters(),
+                                                   allow_varying_args,
+                                                   0, args->Length, args,
+                                                   LispBinder::TypeFromObject
+                                                   );
             }
         }
-        static void UnwrapArgAndType(Object^ arg,
-                                     Object^& real_arg,
-                                     Type^&   apparent_type)
+        return false;
+    }
+};
+void InvokeMember(void* object_handle,
+                  void* type_handle,
+                  const wchar_t* name,
+                  int allow_varying_args,
+                  int n_args,
+                  void* arg_return)
+{
+    array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(arg_return));
+    try
+    {
+        BindingFlags flags = BindingFlags::Public | BindingFlags::FlattenHierarchy;
+        Object^ object = GetObjectFromHandle(object_handle);
+        Type^ type = safe_cast<Type^>(GetObjectFromHandle(type_handle));
+        if (object)
         {
-            if (Proxy^ proxy = safe_cast<Proxy^>(arg))
-            {
-                real_arg = proxy->UnwrapTarget();
-                apparent_type = proxy->UnwrapApparentType();
-            }
-            else
-            {
-                // Not yet sure if we should ever get here. Perhaps simple types
-                // and/or marshal-by-value types won't be wrapped in a proxy.
-                assert(0); 
-                real_arg = arg;
-                apparent_type = arg->GetType();
-            }
+            flags = flags | BindingFlags::Instance;
+            if (!type)
+                type = object->GetType();
+        }
+        else
+        {
+            flags = flags | BindingFlags::Static;
+        }
+        assert(type);
+
+        LispBinder^ binder = gcnew LispBinder(false);
+        String^ strname = gcnew String(name);
+        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, false, args),
+                                                     &InvocableMemberPredicate::IsInvocable);
+        // In this search, note that we're not interested in properties,
+        // but rather in their getters. The predicate object will pick
+        // those out for us.
+        array<MemberInfo^>^ candidates
+            = type->FindMembers(MemberTypes::Method | MemberTypes::Field,
+                                flags,
+                                predicate,
+                                nullptr);
+        if (!candidates || candidates->Length == 0)
+            throw gcnew MissingMethodException(strname);
+        // According to CLR rules, a name can't be overloaded by kind.
+        // It's easy to create a class that violates this in C#, using
+        // the new keyword. As it happens, we will handle this OK unless
+        // a method or parameter taking no arguments conflicts with a
+        // similar parameter, method, or field of the same name.
+        MemberTypes kind = candidates[0]->MemberType;
+        for each (MemberInfo^ member in candidates)
+        {
+            if (member->MemberType != kind)
+                throw gcnew AmbiguousMatchException(String::Format("Conflicting kinds of members with name {0}.", strname));
         }
 
-        static void UnwrapArgs(array<Object^>^ args,
-                               array<Object^>^& real_args)
+        switch (kind)
         {
-            int len = args->Length;
-            real_args = gcnew array<Type^>(len);
-            for (int i = 0; i < len; ++i)
+        case MemberTypes::Method:
             {
-                Object^ real_arg;
-                UnwrapArg(args[i], real_arg);
-                real_args[i] = real_arg;
-            }
-        }
+                Object^ members = binder->SelectMethods(candidates,
+                                                        false, // Don't check type conformance, we already did.
+                                                        LispBinder::ParamsFromMethodBase,
+                                                        allow_varying_args != 0,
+                                                        0, args, LispBinder::TypeFromObject);
 
-        static void UnwrapArgsAndTypes(array<Object^>^ args,
-                                       array<Object^>^& real_args,
-                                       array<Type^>^& types)
-        {
-            int len = args->Length;
-            real_args = gcnew array<Type^>(len);
-            types = gcnew array<Type^>(len);
-            for (int i = 0; i < len; ++i)
-            {
-                Object^ real_arg;
-                Type^ apparent_type;
-                UnwrapArgAndType(args[i], real_arg, apparent_type);
-                real_args[i] = real_arg;
-                types[i] = apparent_type;
-            }
-        }
-
-        static Proxy^ GetField(Object^ instance,
-                               array<MemberInfo^>^ members)
-        {
-            // CLS-compliant types cannot overload fields.
-            if (members->Length > 1)
-                throw gcnew Exception(
-                String::Format("Unable to select from overloaded fields \"{0}\" of type \"{1}\".",
-                              members[0]->Name, members[0]->ReflectedType->FullName));
-            FieldInfo^ fi = safe_cast<FieldInfo^>(members[0]);
-            return gcnew Proxy(fi->GetValue(instance));
-        }
-        static Proxy^ GetProperty(Object^ instance,
-                                  array<MemberInfo^>^ members,
-                                  array<Object^>^ indexes)
-        {
-            PropertyInfo^ member;
-            array<Object^>^ real_args;
-            if (members->Length == 1) // Common case
-            {
-                member = safe_cast<PropertyInfo^>(members[0]);
-                UnwrapArgs(indexes, real_args);
-            }
-            else
-            {
-                array<PropertyInfo^>^ pis = gcnew array<PropertyInfo^>(members->Length);
-                for (int i = 0; i < members->Length; ++i)
-                    pis[i] = safe_cast<PropertyInfo^>(members[i]);
-                array<Type^>^ types;
-                UnwrapArgsAndTypes(indexes, real_args, types);
-                member = Type::DefaultBinder->SelectProperty(BindingFlags::Default,
-                                                             pis,
-                                                             nullptr,
-                                                             types,
-                                                             nullptr);
-            }
-            return gcnew Proxy(member->GetValue(instance, real_args), member->PropertyType);
-        }
-        static Proxy^ InvokeMethod(Object^ instance,
-                                   array<MemberInfo^>^ members,
-                                   array<Object^>^ args)
-        {
-
-            return nullptr;
-        }
-        Proxy^ Proxy::ApparentType()
-        {
-            return gcnew Proxy(type, Type::typeid);
-        }
-        Type^ Proxy::UnwrapApparentType()
-        {
-            return type;
-        }
-        Object^ Proxy::UnwrapTarget()
-        {
-            return obj;
-        }
-        InvocationResult^ Proxy::InvokeMember(String^ member_name, array<Object^>^ args)
-        {
-            try
-            {
-                // We could use System.Type.InvokeMember here in one step, except
-                // for the fact that we need to know the 'apparent' type of the
-                // invocation result. So we're forced to do a separate lookup
-                // of the member info structure, because it provides that info.
-                // We will, however, try to emulate System.Type.InvokeMember in
-                // that we will treat property and field access as if they were
-                // the invocation of a method. The downside to this is that
-                // we do not deal well with like-named members of different kinds.
-                // But note that types that define these are not CLS-compliant.
-                //
-                // Note that we use the apparent type, not the real type, for
-                // looking up methods.
-                array<MemberInfo^>^ members = type->GetMember(member_name);
-                if (members->Length == 0)
+                if (MethodInfo^ method = safe_cast<MethodInfo^>(members))
                 {
-                    throw gcnew Exception(
-                      String::Format("No instance member \"{0}\" found for type \"{1}\".",
-                                     member_name, type->FullName));
-                }
+                    array<ParameterInfo^>^ params = method->GetParameters();
+                    array<Object^>^ real_args = args;
+                    if (args->Length != params->Length)
+                        real_args = gcnew array<Object^>(params->Length);
+                    binder->BindArgs(params, allow_varying_args != 0, 0, args, real_args);
+                    Object^ result = method->Invoke(object, real_args);
+                    // Now pack all the outputs back into args. We have to
+                    // be very careful here -- real_args and args may refer
+                    // to the same array. (See LispBinder::BindArgs().)
+                    
+                    // We start by packing the by-ref output values at the
+                    // end of the array to make room.
+                    int by_ref_i = args->Length;
+                    for (int j = params->Length-1; j >= 0; --j)
+                    {
+                        if (params[j]->ParameterType->IsByRef)
+                            args[--by_ref_i] = real_args[j];
+                    }
+                    // Now build the final output going forwards:
+                    int i = 1;
+                    if (method->ReturnType != System::Void::typeid)
+                    {
+                        args[i++] = (args->Length - by_ref_i) + 1;
+                        args[i++] = safe_cast<Int32^>(0);
+                        args[i++] = result;
+                    }
+                    else
+                    {
+                        args[i++] = (args->Length - by_ref_i);
+                    }
 
-                // Let's look at the first member info, and assume that they're all the 
-                // same kind.
-                Proxy^ result;
-                switch (members[0]->MemberType)
+                    for (int j = 0; j < params->Length; ++j)
+                    {
+                        if (params[j]->ParameterType->IsByRef)
+                        {
+                            args[i++] = j + 1;
+                            args[i++] = args[by_ref_i++];
+                        }
+                    }
+                }
+                else if (array<MethodBase^>^ methods = safe_cast<array<MethodBase^>^>(members))
                 {
-                case MemberTypes::Field:
-                    if (args->Length > 0)
-                        throw gcnew Exception("No arguments allowed in field accessor calls.");
-                    result = GetField(obj, members);
-                    break;
-                case MemberTypes::Property:
-                    result = GetProperty(obj, members, args);
-                    break;
-                case MemberTypes::Method:
-                    result = InvokeMethod(obj, members, args);
-                    break;
-                default:
-                    throw gcnew Exception(
-                        String::Format("Member \"{0}\" of type \"{1}\" is an unknown or unhandled kind.",
-                                       member_name, type->FullName));
+                    throw gcnew AmbiguousMatchException(String::Format("Multiple matches for call to {0}.", strname));
                 }
-                return gcnew InvocationResult(result);
+                else
+                {
+                    throw gcnew MissingMethodException(String::Format("No matching method named {0} found.", strname));
+                }
             }
-            catch (Exception^ e)
+        case MemberTypes::Field:
             {
-                return gcnew InvocationResult(gcnew Proxy(e), true);
+                if (candidates->Length > 1)
+                    throw gcnew AmbiguousMatchException(String::Format("Multiple matches for referend to field {0}.", strname));
+                if (FieldInfo^ field = safe_cast<FieldInfo^>(candidates[0]))
+                {
+                    // Fields are a lot easier than methods. :)
+                    args[0] = safe_cast<Int32^>(1);
+                    args[1] = safe_cast<Int32^>(0);
+                    args[2] = field->GetValue(object);
+                }
             }
-        }
-
-        // The Lisp system calls this to free an object for garbage collection.
-        void ReleaseObjectHandle(void* handle)
-        {
-            ((GCHandle)IntPtr(handle)).Free();
-        }
-
-        // This is used internally to convert an object into a handle that we can
-        // safely give to the Lisp system.
-        static inline void* GetHandleFromObject(Object^ object)
-        {
-            return GCHandle::ToIntPtr(GCHandle::Alloc(object)).ToPointer();
-        }
-
-        // This is used to get the object referred to by a handle.
-        static inline Object^ GetObjectFromHandle(void* handle)
-        {
-            return safe_cast<Object^>(((GCHandle)IntPtr(handle)).Target);
-        }
-
-        // Everything starts from an application domain object:
-        void* GetRootAppDomain()
-        {
-            return GetHandleFromObject(gcnew Proxy(AppDomain::CurrentDomain, System::AppDomain::typeid));
-        }
-        void* InvokeMember(void* object_handle, const wchar_t* name, int n_args, void* arg_handles[])
-        {
-            Object^ object = GetObjectFromHandle(object_handle);
-            Proxy^ proxy = safe_cast<Proxy^>(object);
-            array<Object^>^ args = gcnew array<Object^>(n_args);
-            for (int i = 0; i < n_args; ++i)
-                args[i] = GetObjectFromHandle(arg_handles);
-            return GetHandleFromObject(proxy->InvokeMember(gcnew String(name), args));
-        }
-        void* ApparentTypeOf(void* object_handle)
-        {
-            Object^ object = GetObjectFromHandle(object_handle);
-            if (Proxy^ proxy = dynamic_cast<Proxy^>(object))
-                return GetHandleFromObject(proxy->ApparentType());
-            return GetHandleFromObject(gcnew Proxy(object->GetType(), Type::typeid));
+        default:
+            throw gcnew Exception("Internal error: bad member type selected.");
         }
     }
+    catch (TargetInvocationException^ e)
+    {
+        args[0] = -1;
+        args[1] = e->GetBaseException();
+    }
+    catch (Exception^ e)
+    {
+        args[0] = -1;
+        args[1] = e;
+    }
+    
 }
