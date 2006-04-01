@@ -1,14 +1,14 @@
 // This is the main DLL file.
 
 #include "stdafx.h"
-#include "SpookyDistance.CommonLispProxy.h"
+#include "DllInterface.h"
 #include "LispBinder.h"
 #include <assert.h>
 
 using namespace System;
 using namespace System::Reflection;
 using namespace System::Runtime::InteropServices;
-
+using namespace SpookyDistance::CommonLispReflection;
 
 ref class TreatAs
 {

@@ -7,6 +7,7 @@ using namespace System::Collections::Generic;
 using namespace System::Globalization;
 using namespace System::Reflection;
 using namespace System::Runtime::InteropServices;
+using namespace SpookyDistance::CommonLispReflection;
 
 ref class SuppressParamsKeyword
 {

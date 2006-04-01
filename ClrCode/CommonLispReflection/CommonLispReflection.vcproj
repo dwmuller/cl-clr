@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="SpookyDistance.CommonLispProxy"
+	Name="CommonLispReflection"
 	ProjectGUID="{A694E769-03BA-47B9-86D0-29A370A6688B}"
-	RootNamespace="SpookyDistanceCommonLispProxy"
+	RootNamespace="SpookyDistance.CommonLispReflection"
 	Keyword="ManagedCProj"
 	>
 	<Platforms>
@@ -188,11 +188,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\LispBinder.cpp"
+				RelativePath=".\DllInterface.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\SpookyDistance.CommonLispProxy.cpp"
+				RelativePath=".\LispBinder.cpp"
 				>
 			</File>
 			<File
@@ -222,15 +222,15 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
+				RelativePath=".\DllInterface.h"
+				>
+			</File>
+			<File
 				RelativePath=".\LispBinder.h"
 				>
 			</File>
 			<File
 				RelativePath=".\resource.h"
-				>
-			</File>
-			<File
-				RelativePath=".\SpookyDistance.CommonLispProxy.h"
 				>
 			</File>
 			<File
