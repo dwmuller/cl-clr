@@ -6,7 +6,7 @@
 
 (defpackage :common-lisp-common-language-runtime
   (:nicknames :cl-clr)
-  (:use :common-lisp :rdnzl)
+  (:use :common-lisp :rdnzl :cffi)
   
   ;; Things re-implemented here that take precedence over RDNZL's
   ;; versions:
@@ -14,11 +14,14 @@
            :load-assembly
            :make-null-object
            :new
+           :ref
            )
   (:export :bind-namespace
+           :clr-array-to-list
            :def-namespaces
            :define-clr-call
            :do-assemblies
+           :do-clr-array
            :find-type-from-namespace-qualified-name
            :find-type-from-name
            :find-type-from-simple-name
@@ -29,11 +32,13 @@
            :import-type
            :is-namespace-qualified-type-name
            :init-clr
+           :list-to-clr-array
            :load-assembly
            :make-null-object
            :new
            :print-members
            :print-types
+           :ref
            :shutdown-clr
 
            ;; Related to the alternative reader:
@@ -48,7 +53,7 @@
            :container-p
            ;:define-rdnzl-call
            ;:disable-rdnzl-syntax
-           :do-rdnzl-array
+           ;:do-rdnzl-array
            ;:enable-rdnzl-syntax
            :enum-to-integer
            :field
@@ -59,13 +64,13 @@
            :invoke
            ;:init-rdnzl
            ;:load-assembly
-           :list-to-rdnzl-array
+           ;:list-to-rdnzl-array
            ;:make-null-object
            ;:new
            :or-enums
            :property
-           :ref
-           :rdnzl-array-to-list
+           ;:ref
+           ;:rdnzl-array-to-list
            :rdnzl-error
            :rdnzl-error-exception
            :rdnzl-handler-case

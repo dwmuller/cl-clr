@@ -27,6 +27,21 @@
 (defvar *instance-member-binding-flags* nil)
 (defvar *instance-set-prop-or-field-binding-flags* nil)
 
+(defclass clr-ref ()
+    ((reference :initarg :reference
+                :accessor reference-of
+                :documentation "A RDNZL:CONTAINER of reference type.")
+     (setter    :initarg :setter
+                :accessor setter-of
+                :documentation "A closure to take the new value
+and deposit it in its destination.")))
+
+(defmacro ref (form)
+  "Marks an argument of a call to a CLR method as
+by-reference. FORM must be a setf-able form. Returns an object of
+a type internal to CL-CLR."
+  (error "Not implemented yet."))
+
 (defmacro define-clr-call (lisp-name
                            (&key clr-name
                                  type-name
@@ -50,7 +65,28 @@
                                          "AssemblyQualifiedName"))
                          arg-spec))
            args)))
-                     
+
+(defun list-to-clr-array (list &optional (base-type (get-type-object "System.Object")))
+  "Creates and returns a CLR array of base type BASE-TYPE \(a
+CONTAINER, type name string, or symbol representing a CLR type)
+and rank 1 with the elements from the Lisp list LIST. BASE-TYPE defaults to System.Object."
+  (list-to-rdnzl-array list (if (symbolp base-type)
+                                (get-type-object base-type)
+                                base-type)))
+
+(defun clr-array-to-list (array)
+  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
+same elements."
+  (rdnzl-array-to-list array))
+
+(defmacro do-clr-array ((var array-form &optional result) &body body)
+  "ARRAY-FORM should be a form which evaluates to a CONTAINER
+structure wrapping a CLR array of rank 1.  BODY will be evaluated
+with VAR bound to each element of this array \(as a CONTAINER) in
+turn.  Finally, the result of evaluating the form RESULT is returned."
+  `(do-rdnzl-array ((,var ,array-form ,@(when result (list result))))
+     ,@body))
+
 (define-rdnzl-call generic-invoke-member
     (:dotnet-name "InvokeMember")
   ((type "System.Type")
@@ -99,22 +135,59 @@ namespace-qualified name string of a CLR type."
       (cast obj (get-type obj))
       obj))
 
+;; NOTE NOTE NOTE
+;;
+;; Might have to use an overload of InvokeMember that takes
+;; ParameterModifier. Docs confusing as hell. See:
+;;
+;; http://groups.google.com/group/microsoft.public.dotnet.languages.csharp/browse_thread/thread/a1953aaee6bebe71/678a073a64043691?lnk=st&q=invokemember+ref+out&rnum=2&hl=en#678a073a64043691
+;;
+;; Some of the confusion may stem from COM interop versus native CLR
+;; stuff.
+;;
+;; Another problem that might arise: InvokeMember infers types from
+;; the arguments. What about an *out* argument for which there's no
+;; input object???? It could just be that InvokeMember is flawed and
+;; we need to use a two-step process (lookup/invoke).
+;;
+
+(defun make-args-array (args-list)
+  (let ((args-array (new "System.Object[]" (length args))))
+    (loop
+       for arg in args-list
+       for i from 0
+       do
+         (setf (aref* args-array i) (if (typep arg 'clr-ref)
+                                        (error "Not ready yet.")
+                                        arg)))
+    args-array))
+
+(defun copy-ref-args (args-list args-array)
+  (loop
+     for arg in args-list
+     for i from 0
+     do
+       (when (typep arg 'clr-ref)
+         (funcall (setter-of arg) (unbox (aref* args-array i)))))
+  (values))
+
 (defun invoke-member (object member-name &rest args)
-  (let ((result
-         (rdnzl-handler-case
-          (if (symbolp object)
-              (generic-invoke-member (get object 'clr-type)
-                                     member-name
-                                     *static-member-binding-flags*
-                                     *default-binding-object*
-                                     *null-object*
-                                     (list-to-rdnzl-array args))
+  (let* ((args-array (list-to-rdnzl-array args))
+         (result
+          (rdnzl-handler-case
+           (if (symbolp object)
+               (generic-invoke-member (get object 'clr-type)
+                                      member-name
+                                      *static-member-binding-flags*
+                                      *default-binding-object*
+                                      *null-object*
+                                      args-array)
               (generic-invoke-member (get-type object)
                                      member-name
                                      *instance-member-binding-flags*
                                      *default-binding-object*
                                      object
-                                     (list-to-rdnzl-array args)))
+                                     args-array))
           ("System.Reflection.TargetInvocationException"
            (err)
            ;; Unwrap the inner exception; the caller isn't interested

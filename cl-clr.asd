@@ -1,4 +1,4 @@
-;;; $Header:$
+;;; $Id:$
 ;;;
 ;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
@@ -17,6 +17,8 @@
 
 (asdf:defsystem :cl-clr
     :components ((:file "packages")
+                 (:file "ffi"
+                        :depends-on ("packages"))
                  (:file "types"
                         :depends-on ("packages"))
                  (:file "symbols"
@@ -34,5 +36,6 @@
                  (:file "util"
                         :depends-on ("packages"
                                      "reader"))
-                 (:system "rdnzl"))
-    :depends-on ("rdnzl"))
+                 (:system "rdnzl")
+                 (:system "cffi"))
+    :depends-on ("rdnzl" "cffi"))

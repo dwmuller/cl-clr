@@ -19,6 +19,14 @@ ref class NilTypeClass
 {
 };
 
+ref class TypeComparer : IComparer<Type^>
+{
+public:
+    virtual int Compare(Type^ a, Type^ b)
+    {
+        return String::Compare(a->Name, b->Name);
+    }
+};
 void LispBinder::AddNumericConversions(Type^ from, ... array<Type^>^ to)
 {
     TypeList^ to_list = gcnew TypeList;
@@ -48,7 +56,7 @@ void LispBinder::init()
     // From long to float, double, or decimal.
     // From char to int, long, float, double, or decimal.
     // From float to double.
-    numeric_conversions = gcnew TypeConversionDictionary();
+    numeric_conversions = gcnew TypeConversionDictionary(gcnew TypeComparer);
     AddNumericConversions(SByte::typeid,  Int16::typeid,
                                           Int32::typeid,
                                           Int64::typeid,
@@ -321,6 +329,7 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                                    array<ParameterInfo^>^ (params_accessor)(Object^ info),
                                    bool allow_varying_args,
                                    int begin_args,
+                                   int end_args,
                                    array<Object^>^ args,
                                    Type^ (type_accessor)(Object^ obj))
 {
@@ -328,7 +337,6 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
         throw gcnew ArgumentNullException;
     if ( match->Length == 0)
         return nullptr;
-    int end_args = args->Length;
     int n_args = end_args - begin_args;
 
     MethodBase^ best;
@@ -349,25 +357,24 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
         varying_type = VaryingArgsType(params);
         if (varying_type)
             --n_required;
+        // 0 = tie
+        // 1 = candidate is worse than best
+        // 2 = candidate is better than best
         int match = BetterArgsMatch(begin_args,
                                     begin_args + n_required,
                                     args,
                                     type_accessor,
                                     best->GetParameters(),
                                     params);
-        switch (match)
+        // If it's a tie so far, but one takes a varying argument list and
+        // the other doesn't, then the one without varying args wins.
+        if (match == 0 && allow_varying_args)
         {
-        case 1: break;
-        case 0:
-            // If it's a tie so far, but one takes a varying argument list and
-            // the other doesn't, then the one without varying args wins.
-            if (allow_varying_args)
+            if (varying_type)
             {
-                if (varying_type)
+                Type^ best_varying_type = VaryingArgsType(best->GetParameters());
+                if (best_varying_type)
                 {
-                    Type^ best_varying_type = VaryingArgsType(best->GetParameters());
-                    if (!best_varying_type)
-                        continue;
                     // Hmm. Tie-breaker is based on the 'expanded forms' of both
                     // parameter lists, i.e. we pretend they have as many arguments
                     // as necessary of the varying-argument type.
@@ -377,25 +384,36 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                         if (match)
                             break;
                     }
-                    switch (match)
-                    {
-                    case 1:
-                        continue;
-                    case 2:
-                        best = candidate;
-                        if (ties)
-                            ties->Clear();
-                        break;
-                    }
-                }
-                else if (VaryingArgsType(best->GetParameters()))
-                {
-                    best = candidate;
-                    if (ties)
-                        ties->Clear();
-                    continue;
                 }
             }
+            else if (VaryingArgsType(best->GetParameters()))
+            {
+                match = 2;
+            }
+        }
+        // Sometimes we get two members from FindMembers that are identical
+        // except for details that we don't understand. It seems like one
+        // should shadow the other. A good example is requesting GetType for
+        // a System.AppDomain object. We'll try to differentiate based on the
+        // relative convertability of the declaring types. This is basically
+        // the same logic as in BetterConversion, except that we already know
+        // that the called object (a real object or a type meta-object) is
+        // a reference type and is convertible to both declaring types.
+        if (match == 0)
+        {
+            if (IsConvertibleTo(best->DeclaringType, candidate->DeclaringType))
+            {
+                if (!IsConvertibleTo(candidate->DeclaringType, best->DeclaringType))
+                    match = 1;
+            }
+            else if (IsConvertibleTo(candidate->DeclaringType, best->DeclaringType))
+                match = 2;
+        }
+        
+        switch (match)
+        {
+        case 1: break;
+        case 0:
             if (!ties)
             {
                 ties = gcnew List<MethodBase^>;
@@ -429,8 +447,8 @@ MethodBase^ LispBinder::SelectMethod (BindingFlags bindingAttr,
         allow_varying_args = false;
         begin_types = 1;
     }
-    Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
-                                   allow_varying_args, begin_types, types,
+    Object^ result = SelectMethods(match, true, ParamsFromMethodBase, allow_varying_args,
+                                   begin_types, types->Length, types,
                                    TypeFromType);
     if (MethodInfo^ method = dynamic_cast<MethodInfo^>(result))
         return method;
@@ -460,8 +478,8 @@ PropertyInfo^ LispBinder::SelectProperty (BindingFlags bindingAttr,
         allow_varying_args = false;
         begin_indexes = 1;
     }
-    Object^ result = SelectMethods(match, true, ParamsFromPropertyInfo,
-                                   allow_varying_args, begin_indexes, indexes, TypeFromType);
+    Object^ result = SelectMethods(match, true, ParamsFromPropertyInfo, allow_varying_args,
+                                   begin_indexes, indexes->Length, indexes, TypeFromType);
     if (PropertyInfo^ method = dynamic_cast<PropertyInfo^>(result))
         return method;
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
@@ -485,12 +503,12 @@ int LispBinder::ReturnArraySize(MethodInfo^ method)
 }
 void LispBinder::BindArgs(array<ParameterInfo^>^ params,
                           bool allow_varying_args,
-                          int begin_args,
+                          int begin_args, int end_args,
                           array<Object^>^ args,
                           array<Object^>^ new_args)
 {
-    assert(args->Length == params->Length);
-    int n_args = args->Length - begin_args;
+    assert(new_args->Length == params->Length);
+    int n_args = end_args - begin_args;
     int n_required = params->Length;
     Type^ varying_args_type = nullptr;
     if (allow_varying_args)
@@ -525,15 +543,15 @@ MethodBase^ LispBinder::BindToMethod (BindingFlags bindingAttr,
         allow_varying_args = false;
         begin_args = 1;
     }
-    Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
-                                   allow_varying_args, begin_args,  args, TypeFromObject);
+    Object^ result = SelectMethods(match, true, ParamsFromMethodBase, allow_varying_args,
+                                   begin_args, args->Length, args, TypeFromObject);
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
         throw gcnew AmbiguousMatchException("Multiple matches.");
     MethodInfo^ method = dynamic_cast<MethodInfo^>(result);
     if (!method)
         return nullptr;
     array<Object^>^ new_args = gcnew array<Object^>(method->GetParameters()->Length);
-    BindArgs(method->GetParameters(), allow_varying_args, begin_args, args, new_args);
+    BindArgs(method->GetParameters(), allow_varying_args, begin_args, args->Length, args, new_args);
     state = args;
     args = new_args;
     return method;

@@ -2,10 +2,10 @@ namespace SpookyDistance
 {
     namespace CommonLispReflection
     {
-        ref class LispBinder : System::Reflection::Binder
+        public ref class LispBinder : System::Reflection::Binder
         {
             typedef System::Collections::Generic::List<System::Type^> TypeList;
-            typedef System::Collections::Generic::SortedDictionary<System::Type^, TypeList^> TypeConversionDictionary;
+            typedef System::Collections::Generic::SortedList<System::Type^, TypeList^> TypeConversionDictionary;
             TypeConversionDictionary^ numeric_conversions;
             bool implicit_double_narrowing;
 
@@ -53,7 +53,7 @@ namespace SpookyDistance
             // list length.
             void BindArgs(array<System::Reflection::ParameterInfo^>^ params,
                                              bool allow_varying_args,
-                                             int begin_args,
+                                             int begin_args, int end_args,
                                              array<System::Object^>^ args,
                                              array<System::Object^>^ new_args);
 
@@ -61,7 +61,7 @@ namespace SpookyDistance
                                            bool check_conformance,
                                            array<System::Reflection::ParameterInfo^>^ (params_accessor)(System::Object^ info),
                                            bool allow_varying_args,
-                                           int begin_args,
+                                           int begin_args, int end_args,
                                            array<System::Object^>^ args,
                                            System::Type^ (type_accessor)(System::Object^ obj));
 

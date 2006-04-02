@@ -4,6 +4,7 @@
 #include "DllInterface.h"
 #include "LispBinder.h"
 #include <assert.h>
+#include <cstring>
 
 using namespace System;
 using namespace System::Reflection;
@@ -19,7 +20,7 @@ public:
 
 // This is used internally to convert an object into a handle that we can
 // safely give to the Lisp system.
-static inline void* GetHandleFromObject(Object^ object)
+static inline clr_handle GetHandleFromObject(Object^ object)
 {
     if (object == nullptr)
         return 0;
@@ -27,164 +28,45 @@ static inline void* GetHandleFromObject(Object^ object)
 }
 
 // This is used to get the object referred to by a handle.
-static inline Object^ GetObjectFromHandle(void* handle)
+static inline Object^ GetObjectFromHandle(clr_handle handle)
 {
     if (!handle)
         return nullptr;
-    return safe_cast<Object^>(((GCHandle)IntPtr(handle)).Target);
+    return ((GCHandle)IntPtr(handle)).Target;
 }
 
  // The Lisp system calls this to free an object for garbage collection.
- void ReleaseObjectHandle(void* handle)
+ void ReleaseObjectHandle(clr_handle handle)
 {
     if (handle)
         ((GCHandle)IntPtr(handle)).Free();
 }
 
-void InvokeMember(Type^ type,
-                  Object^ object,
-                  const wchar_t* name,
-                  int binding_flags,
-                  int n_args,
-                  void* arg_handles[],
-                  InvocationResult* result)
-{
-    array<Object^>^ args = gcnew array<Object^>(n_args);
-    for (int i = 0; i < n_args; ++i)
-        args[i] = GetObjectFromHandle(arg_handles);
-    Object^ returned = type->InvokeMember(gcnew String(name),
-                                          (BindingFlags)binding_flags,
-                                           nullptr, // default binder
-                                           object,
-                                           args);
-        result->caught_exception = 0;
-        result->object_handle = GetHandleFromObject(returned);
-}
-void SetMember(void* new_value_handle,
-               Type^ type,
-               Object^ object,
-               const wchar_t* name,
-               int binding_flags,
-               int n_args,
-               void* arg_handles[],
-               InvocationResult* result)
-{
-    array<Object^>^ args = gcnew array<Object^>(n_args + 1);
-    for (int i = 0; i < n_args; ++i)
-        args[i] = GetObjectFromHandle(arg_handles);
-    args[n_args] = GetObjectFromHandle(new_value_handle);
-    Object^ returned = type->InvokeMember(gcnew String(name),
-                                          (BindingFlags)binding_flags,
-                                           nullptr, // default binder
-                                           object,
-                                           args);
-        result->caught_exception = 0;
-        result->object_handle = GetHandleFromObject(returned);
-}
 //////////////////////////////////////////////////////////////////////////////
 // Exported entry points
 
 
 // Everything starts from an application domain object:
-void* GetRootAppDomain()
+clr_handle GetRootAppDomain()
 {
     return GetHandleFromObject(AppDomain::CurrentDomain);
-}
-void InvokeInstanceMember(void* object_handle,
-                          const wchar_t* name,
-                          int binding_flags,
-                          int n_args,
-                          void* arg_handles[],
-                          InvocationResult* result)
-{
-    try
-    {
-        Object^ object = GetObjectFromHandle(object_handle);
-        Type^ type = object->GetType();
-        InvokeMember(type, object, name, binding_flags, n_args,
-                    arg_handles, result);
-    }
-    catch (Exception^ e)
-    {
-        result->caught_exception = 1;
-        result->object_handle = GetHandleFromObject(e);
-    }
-}
-void InvokeStaticMember(void* type_handle,
-                        const wchar_t* name,
-                        int binding_flags,
-                        int n_args,
-                        void* arg_handles[],
-                        InvocationResult* result)
-{
-    try
-    {
-        Type^ type = (Type^)GetObjectFromHandle(type_handle);
-        InvokeMember(type, nullptr, name, binding_flags,
-                     n_args, arg_handles, result);
-    }
-    catch (Exception^ e)
-    {
-        result->caught_exception = 1;
-        result->object_handle = GetHandleFromObject(e);
-    }
-}
-void SetInstanceMember(void* new_value_handle,
-                       void* object_handle,
-                       const wchar_t* name,
-                       int binding_flags,
-                       int n_args,
-                       void* arg_handles[],
-                       InvocationResult* result)
-{
-    try
-    {
-        Object^ object = GetObjectFromHandle(object_handle);
-        Type^ type = object->GetType();
-        SetMember(new_value_handle, type, object,
-                  name, binding_flags, n_args,
-                  arg_handles, result);
-    }
-    catch (Exception^ e)
-    {
-        result->caught_exception = 1;
-        result->object_handle = GetHandleFromObject(e);
-    }
-}
-void SetStaticMember(void* new_value_handle,
-                     void* type_handle,
-                     const wchar_t* name,
-                     int binding_flags,
-                     int n_args,
-                     void* arg_handles[],
-                     InvocationResult* result)
-{
-    try
-    {
-        Type^ type = (Type^)GetObjectFromHandle(type_handle);
-        SetMember(new_value_handle, type, nullptr,
-                  name, binding_flags,
-                  n_args, arg_handles, result);
-    }
-    catch (Exception^ e)
-    {
-        result->caught_exception = 1;
-        result->object_handle = GetHandleFromObject(e);
-    }
 }
 
 ref class InvocableMemberPredicate {
     LispBinder^ binder;
     String^ name;
+    int n_args;
     array<Object^>^ args;
     bool allow_varying_args;
 public:
     InvocableMemberPredicate(LispBinder^ b,
                              String^ nm,
                              bool allow_varargs,
+                             int nargs,
                              array<Object^>^ a)
         : binder(b),
           name(nm), allow_varying_args(allow_varargs),
+          n_args(nargs),
           args(a)
     {
     }
@@ -192,7 +74,7 @@ public:
     {
         if (member->Name == name)
             return true;
-        if (MethodBase^ method = safe_cast<MethodBase^>(member))
+        if (MethodBase^ method = dynamic_cast<MethodBase^>(member))
         {
             if (method->IsSpecialName
                 && method->Name->EndsWith(name)
@@ -201,7 +83,7 @@ public:
             {
                 return binder->ArgsConformToParams(method->GetParameters(),
                                                    allow_varying_args,
-                                                   0, args->Length, args,
+                                                   0, n_args, args,
                                                    LispBinder::TypeFromObject
                                                    );
             }
@@ -209,12 +91,31 @@ public:
         return false;
     }
 };
-void InvokeMember(void* object_handle,
-                  void* type_handle,
-                  const wchar_t* name,
+
+clr_handle MakeObjectArray(int n)
+{
+    return GetHandleFromObject(gcnew array<Object^>(n));
+}
+
+clr_handle GetArrayElement(clr_handle arry, int index)
+{
+    return GetHandleFromObject(safe_cast<Array^>(GetObjectFromHandle(arry))->GetValue(index));
+}
+void SetArrayElement(clr_handle arry, int index, clr_handle obj)
+{
+    safe_cast<Array^>(GetObjectFromHandle(arry))->SetValue(GetObjectFromHandle(obj), index);
+}
+int IsSimpleType(clr_handle obj, const char* type_name)
+{
+    return GetObjectFromHandle(obj)->GetType()->FullName == gcnew String(type_name);
+}
+
+void InvokeMember(clr_handle object_handle,
+                  clr_handle type_handle,
+                  const char* name,
                   int allow_varying_args,
                   int n_args,
-                  void* arg_return)
+                  clr_handle arg_return)
 {
     array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(arg_return));
     try
@@ -236,7 +137,7 @@ void InvokeMember(void* object_handle,
 
         LispBinder^ binder = gcnew LispBinder(false);
         String^ strname = gcnew String(name);
-        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, false, args),
+        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, false, n_args, args),
                                                      &InvocableMemberPredicate::IsInvocable);
         // In this search, note that we're not interested in properties,
         // but rather in their getters. The predicate object will pick
@@ -268,19 +169,19 @@ void InvokeMember(void* object_handle,
                                                         false, // Don't check type conformance, we already did.
                                                         LispBinder::ParamsFromMethodBase,
                                                         allow_varying_args != 0,
-                                                        0, args, LispBinder::TypeFromObject);
+                                                        0, n_args, args, LispBinder::TypeFromObject);
 
-                if (MethodInfo^ method = safe_cast<MethodInfo^>(members))
+                if (MethodInfo^ method = dynamic_cast<MethodInfo^>(members))
                 {
                     array<ParameterInfo^>^ params = method->GetParameters();
                     array<Object^>^ real_args = args;
                     if (args->Length != params->Length)
                         real_args = gcnew array<Object^>(params->Length);
-                    binder->BindArgs(params, allow_varying_args != 0, 0, args, real_args);
+                    binder->BindArgs(params, allow_varying_args != 0, 0, n_args, args, real_args);
                     Object^ result = method->Invoke(object, real_args);
+
                     // Now pack all the outputs back into args. We have to
                     // be very careful here -- real_args and args may refer
-                    // to the same array. (See LispBinder::BindArgs().)
                     
                     // We start by packing the by-ref output values at the
                     // end of the array to make room.
@@ -291,7 +192,7 @@ void InvokeMember(void* object_handle,
                             args[--by_ref_i] = real_args[j];
                     }
                     // Now build the final output going forwards:
-                    int i = 1;
+                    int i = 0;
                     if (method->ReturnType != System::Void::typeid)
                     {
                         args[i++] = (args->Length - by_ref_i) + 1;
@@ -312,7 +213,7 @@ void InvokeMember(void* object_handle,
                         }
                     }
                 }
-                else if (array<MethodBase^>^ methods = safe_cast<array<MethodBase^>^>(members))
+                else if (array<MethodBase^>^ methods = dynamic_cast<array<MethodBase^>^>(members))
                 {
                     throw gcnew AmbiguousMatchException(String::Format("Multiple matches for call to {0}.", strname));
                 }
@@ -321,11 +222,12 @@ void InvokeMember(void* object_handle,
                     throw gcnew MissingMethodException(String::Format("No matching method named {0} found.", strname));
                 }
             }
+            break;
         case MemberTypes::Field:
             {
                 if (candidates->Length > 1)
                     throw gcnew AmbiguousMatchException(String::Format("Multiple matches for referend to field {0}.", strname));
-                if (FieldInfo^ field = safe_cast<FieldInfo^>(candidates[0]))
+                if (FieldInfo^ field = dynamic_cast<FieldInfo^>(candidates[0]))
                 {
                     // Fields are a lot easier than methods. :)
                     args[0] = safe_cast<Int32^>(1);
@@ -333,6 +235,7 @@ void InvokeMember(void* object_handle,
                     args[2] = field->GetValue(object);
                 }
             }
+            break;
         default:
             throw gcnew Exception("Internal error: bad member type selected.");
         }
@@ -348,4 +251,57 @@ void InvokeMember(void* object_handle,
         args[1] = e;
     }
     
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Boxing functions
+
+#define DEF_BOX(name, c_type) \
+    clr_handle Box##name(c_type value) \
+    { \
+        return GetHandleFromObject(safe_cast<System::name^>(value)); \
+    } \
+    c_type Unbox##name(clr_handle handle) \
+    { \
+        return safe_cast<c_type>(GetObjectFromHandle(handle)); \
+    }
+
+DEF_BOX(Byte,    unsigned char);
+DEF_BOX(Int16,   short);
+DEF_BOX(Int32,   int);
+DEF_BOX(Int64,   long long);
+DEF_BOX(Double,  double);
+DEF_BOX(Single,  float);
+
+clr_handle BoxString(const char* value)
+{
+    return GetHandleFromObject(gcnew System::String(value));
+}
+const char* UnboxString(clr_handle handle)
+{
+    return reinterpret_cast<const char*>(Marshal::StringToHGlobalAnsi(safe_cast<String^>(GetObjectFromHandle(handle))).ToPointer());
+}
+clr_handle BoxChar(int value)
+{
+    return GetHandleFromObject(static_cast<System::Char^>((wchar_t)value));
+}
+int UnboxChar(clr_handle handle)
+{
+    return *safe_cast<Char^>(GetObjectFromHandle(handle));
+}
+clr_handle BoxBoolean(int value)
+{
+    return GetHandleFromObject(static_cast<System::Boolean^>(value != 0));
+}
+int UnboxBoolean(clr_handle handle)
+{
+    return *safe_cast<Boolean^>(GetObjectFromHandle(handle)) == true;
+}
+clr_handle BoxSingleFromDouble(double value)
+{
+    return GetHandleFromObject(safe_cast<Single^>((float)value));
+}
+double UnBoxDoubleFromSingle(clr_handle handle)
+{
+    return *safe_cast<Single^>(GetObjectFromHandle(handle));
 }

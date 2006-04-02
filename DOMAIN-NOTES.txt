@@ -74,15 +74,15 @@ between domains, but they're copied rather than referenced. In order
 to deal with the copied objects, the associated assembly has to be
 loaded into the domain where the copy resides. If the copying domain
 can't load the assembly because it can't find it (having a different
-ApplicationBase directory, for instance), then this fail.
+ApplicationBase directory, for instance), then this fails.
 
-It seems in order to do this sort of thing you really need to write
-host code that runs in the dynamically-created application domain and
-which arbitrates the loading of assemblies there -- a remote
-loader. For this inconvenience to make sense, you have to think of
-appdomains as separate processes, which is exactly how Microsoft wants
-you to think of them. After much search, I found an article by Eric
-Gunnerson, "AppDomains and Dynamic Loading", that describes this
+It seems that in order to do this sort of thing you really need to
+write host code that runs in the dynamically-created application
+domain and which arbitrates the loading of assemblies there -- a
+remote loader. For this inconvenience to make sense, you have to think
+of appdomains as separate processes, which is exactly how Microsoft
+wants you to think of them. After much search, I found an article by
+Eric Gunnerson, "AppDomains and Dynamic Loading", that describes this
 clearly. However, it's not entirely clear in one important
 detail. Although he talks about loading "our add-in application from a
 totally different directory", it turns out that the PrivateBinPath can
@@ -96,6 +96,11 @@ Global Assembly Cache. (See Suzanne Cook's blog entries on the
 loader. Although often too terse, they're helpful.) To do this, the
 assembly has to have a strong name, which introduces another level of
 complexity.
+
+Although support for multiple application domains was originally an
+important motivation for creating CL-CLR, it turns out to be a tough
+nut to crack, and best treated separately from the Lisp/CLR interface.
+I have set the problem aside for the time being.
 
 References:
 

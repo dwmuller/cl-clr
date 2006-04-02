@@ -25,11 +25,12 @@ object                  Yes         System.Object           Object or boxed valu
 string                  Yes         System.String           Unicode string
 float32                 Yes         System.Single           IEC 60559:1989 32-bit float
 float64                 Yes         System.Double           IEC 60559:1989 64-bit float
+
+unsigned int8           Yes         System.Byte             Unsigned 8-bit integer
 int16                   Yes         System.Int16            Signed 16-bit integer
 int32                   Yes         System.Int32            Signed 32-bit integer
 int64                   Yes         System.Int64            Signed 64-bit integer
 native int              Yes         System.IntPtr           Signed integer, native size
-unsigned int8           Yes         System.Byte             Unsigned 8-bit integer
 
 int8                    No          System.SByte            Signed 8-bit integer
 native unsigned int     No          System.UIntPtr          Unsigned integer, native size
@@ -54,15 +55,14 @@ to a null pointer, the type of which we treat as the subclass-of-all-
 subclasses, as in Lisp. We also allow null pointers to represent a false
 boolean value.
 
-Lisp values are converted based primarily on the Lisp object's class as
+Lisp values are converted based primarily on the Lisp object's type as
 follows:
 FLOAT      Single or Double, depending on type and its range.
 CHARACTER  Char
 RATIO      Double
-INTEGER    Int16, Int32, or Int64 depending on value. 
-T          Boolean (true)
+INTEGER    Byte, Int16, Int32, Int64, or Decimal depending on value. 
 (EQ T)     Boolean (true)
-NULL       Boolean (false)
+NULL       null pointer (can bind to Boolean as false value)
 
 STRING     String
 PATHNAME   String
