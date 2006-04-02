@@ -40,16 +40,13 @@ static inline Object^ GetObjectFromHandle(clr_handle handle)
 ref class InvocableMemberPredicate {
     LispBinder^ binder;
     String^ name;
-    int n_args;
     array<Object^>^ args;
 public:
     InvocableMemberPredicate(LispBinder^ b,
                              String^ nm,
-                             int nargs,
                              array<Object^>^ a)
         : binder(b),
           name(nm),
-          n_args(nargs),
           args(a)
     {
     }
@@ -65,18 +62,52 @@ public:
                 && method->Name->Length == (name->Length + 4))
             {
                 return binder->ArgsConformToParams(method->GetParameters(),
-                                                   n_args, args,
-                                                   LispBinder::TypeFromObject
-                                                   );
+                                                   args,
+                                                   LispBinder::TypeFromObject);
             }
         }
         return false;
     }
 };
 
+ref class ExceptionReturn
+{
+public:
+    Exception^ exception;
+    ExceptionReturn(Exception^ e)
+        : exception(e)
+    {
+    }
+};
+ref class VoidReturn
+{
+    VoidReturn () {}
+    static VoidReturn^ instance = gcnew VoidReturn;
+    static clr_handle  instanceHandle = GetHandleFromObject(Instance);
+public:
+    static property VoidReturn^ Instance {
+        VoidReturn^ get () {return instance;}
+    }
+    static property clr_handle  InstanceHandle {
+        clr_handle get () {return instanceHandle;}
+    }
+};
+
 //////////////////////////////////////////////////////////////////////////////
 // Exported entry points
 
+clr_handle returned_exception(clr_handle e_handle)
+{
+    ExceptionReturn^ e = dynamic_cast<ExceptionReturn^>(GetObjectFromHandle(e_handle));
+    if (e)
+        return GetHandleFromObject(e->exception);
+    return 0;
+}
+
+int is_void_return(clr_handle v_handle)
+{
+    return v_handle == VoidReturn::InstanceHandle;
+}
 
 // Everything starts from an application domain object:
 clr_handle get_default_app_domain()
@@ -106,6 +137,9 @@ void set_array_element(clr_handle arry, int index, clr_handle obj)
 // The Lisp system calls this to free an object for garbage collection.
  void release_object_handle(clr_handle handle)
 {
+    // Don't release a persistent singleton handle! (In release
+    // builds, we don't want to pay the overhead of this check.)
+    assert(handle != VoidReturn::InstanceHandle);
     if (handle)
         ((GCHandle)IntPtr(handle)).Free();
 }
@@ -115,13 +149,12 @@ int is_simple_type(clr_handle obj, const char* type_name)
     return GetObjectFromHandle(obj)->GetType()->FullName == gcnew String(type_name);
 }
 
-void invoke_member(clr_handle object_handle,
-                   clr_handle type_handle,
-                   const char* name,
-                   int n_args,
-                   clr_handle arg_return)
+clr_handle invoke_member(clr_handle object_handle,
+                         clr_handle type_handle,
+                         const char* name,
+                         clr_handle args_handle)
 {
-    array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(arg_return));
+    array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(args_handle));
     try
     {
         BindingFlags flags = BindingFlags::Public | BindingFlags::FlattenHierarchy;
@@ -141,7 +174,7 @@ void invoke_member(clr_handle object_handle,
 
         LispBinder^ binder = gcnew LispBinder(false);
         String^ strname = gcnew String(name);
-        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, n_args, args),
+        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, args),
                                                      &InvocableMemberPredicate::IsInvocable);
         // In this search, note that we're not interested in properties,
         // but rather in their getters. The predicate object will pick
@@ -165,6 +198,7 @@ void invoke_member(clr_handle object_handle,
                 throw gcnew AmbiguousMatchException(String::Format("Conflicting kinds of members with name {0}.", strname));
         }
 
+        Object^ result = nullptr;
         switch (kind)
         {
         case MemberTypes::Method:
@@ -172,49 +206,20 @@ void invoke_member(clr_handle object_handle,
                 Object^ members = binder->SelectMethods(candidates,
                                                         false, // Don't check type conformance, we already did.
                                                         LispBinder::ParamsFromMethodBase,
-                                                        n_args, args, LispBinder::TypeFromObject);
+                                                        args, LispBinder::TypeFromObject);
 
                 if (MethodInfo^ method = dynamic_cast<MethodInfo^>(members))
                 {
                     array<ParameterInfo^>^ params = method->GetParameters();
-                    array<Object^>^ real_args = args;
-                    if (args->Length != params->Length)
-                        real_args = gcnew array<Object^>(params->Length);
-                    binder->BindArgs(params, n_args, args, real_args);
-                    Object^ result = method->Invoke(object, real_args);
+                    array<Object^>^ real_args = binder->BindArgs(params, args);
 
-                    // Now pack all the outputs back into args. We have to
-                    // be very careful here -- real_args and args may refer
-                    
-                    // We start by packing the by-ref output values at the
-                    // end of the array to make room.
-                    int by_ref_i = args->Length;
-                    for (int j = params->Length-1; j >= 0; --j)
-                    {
-                        if (params[j]->ParameterType->IsByRef)
-                            args[--by_ref_i] = real_args[j];
-                    }
-                    // Now build the final output going forwards:
-                    int i = 0;
-                    if (method->ReturnType != System::Void::typeid)
-                    {
-                        args[i++] = (args->Length - by_ref_i) + 1;
-                        args[i++] = safe_cast<Int32^>(0);
-                        args[i++] = result;
-                    }
-                    else
-                    {
-                        args[i++] = (args->Length - by_ref_i);
-                    }
+                    result = method->Invoke(object, real_args);
 
-                    for (int j = 0; j < params->Length; ++j)
-                    {
-                        if (params[j]->ParameterType->IsByRef)
-                        {
-                            args[i++] = j + 1;
-                            args[i++] = args[by_ref_i++];
-                        }
-                    }
+                    if (real_args != args)
+                        binder->ReorderArgumentArray(real_args, args);
+
+                    if (method->ReturnType == System::Void::typeid)
+                        return VoidReturn::InstanceHandle;
                 }
                 else if (array<MethodBase^>^ methods = dynamic_cast<array<MethodBase^>^>(members))
                 {
@@ -231,30 +236,25 @@ void invoke_member(clr_handle object_handle,
                 if (candidates->Length > 1)
                     throw gcnew AmbiguousMatchException(String::Format("Multiple matches for referend to field {0}.", strname));
                 if (FieldInfo^ field = dynamic_cast<FieldInfo^>(candidates[0]))
-                {
-                    // Fields are a lot easier than methods. :)
-                    args[0] = safe_cast<Int32^>(1);
-                    args[1] = safe_cast<Int32^>(0);
-                    args[2] = field->GetValue(object);
-                }
+                    result = field->GetValue(object);
             }
             break;
         default:
             throw gcnew Exception("Internal error: bad member type selected.");
         }
+        return GetHandleFromObject(result);
     }
     catch (TargetInvocationException^ e)
     {
-        args[0] = -1;
-        args[1] = e->GetBaseException();
+        return GetHandleFromObject(gcnew ExceptionReturn(e->GetBaseException()));
     }
     catch (Exception^ e)
     {
-        args[0] = -1;
-        args[1] = e;
+        return GetHandleFromObject(gcnew ExceptionReturn(e));
     }
     
 }
+
 
 //////////////////////////////////////////////////////////////////////////////
 // Boxing functions

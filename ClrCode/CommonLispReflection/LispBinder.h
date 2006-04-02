@@ -91,7 +91,7 @@ namespace SpookyDistance
                                 array<System::Reflection::ParameterInfo^>^ params1,
                                 array<System::Reflection::ParameterInfo^>^ params2);
             bool ArgsConformToParams(array<System::Reflection::ParameterInfo^>^ params,
-                                     int n_args, array<System::Object^>^ args,
+                                     array<System::Object^>^ args,
                                      System::Type^ (type_accessor)(System::Object^ obj));
 
             // Static helper function to check for a "parameter array" parameter in the last
@@ -106,17 +106,17 @@ namespace SpookyDistance
 
             // Set up an args array for an invocation call, given a parameter list
             // and a list of actual arguments. The input and output arg lists may be
-            // the same. The output arg list length must exactly match the params
-            // list length.
-            void BindArgs(array<System::Reflection::ParameterInfo^>^ params,
-                                             int n_args,
-                                             array<System::Object^>^ args,
-                                             array<System::Object^>^ new_args);
+            // the same. The output arg list length will exactly match the params
+            // list length. The only reason BindArgs currently will allocate a new
+            // array is if some of the arguments were packed into an array for a
+            // trailing ParamsArray parameter. This happens even if there's only
+            // one optional argument.
+            array<System::Object^>^ BindArgs(array<System::Reflection::ParameterInfo^>^ params,
+                                             array<System::Object^>^ args);
 
             System::Object^ SelectMethods (array<System::Reflection::MemberInfo^>^ match,
                                            bool check_conformance,
                                            array<System::Reflection::ParameterInfo^>^ (params_accessor)(System::Object^ info),
-                                           int n_args,
                                            array<System::Object^>^ args,
                                            System::Type^ (type_accessor)(System::Object^ obj));
 

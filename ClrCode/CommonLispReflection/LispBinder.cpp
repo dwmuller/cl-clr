@@ -288,9 +288,10 @@ array<ParameterInfo^>^ LispBinder::ParamsFromMethodBase(Object^ info)
     return safe_cast<MethodBase^>(info)->GetParameters();
 }
 bool LispBinder::ArgsConformToParams(array<ParameterInfo^>^ params,
-                                     int n_args, array<Object^>^ args,
+                                     array<Object^>^ args,
                                      Type^ (type_accessor)(Object^ obj))
 {
+    int n_args = args->Length;
     int n_params = params->Length;
     int n_required = n_params;
     Type^ varying_type = VaryingParamsType(params);
@@ -329,7 +330,6 @@ bool LispBinder::ArgsConformToParams(array<ParameterInfo^>^ params,
 Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                                    bool check_conformance,
                                    array<ParameterInfo^>^ (params_accessor)(Object^ info),
-                                   int end_args,
                                    array<Object^>^ args,
                                    Type^ (type_accessor)(Object^ obj))
 {
@@ -337,20 +337,20 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
         throw gcnew ArgumentNullException;
     if ( match->Length == 0)
         return nullptr;
-    int n_args = end_args;
+    int n_args = args->Length;
 
     // If the last argument is a VarArgs array, this will be
     // the type of its elements.
     Type^ var_args_type = nullptr;
     if (n_args > 0)
-        Type^ var_args_type = VarArgsBase::ElementTypeFromVarArgsType(type_accessor(args[end_args-1]));
+        Type^ var_args_type = VarArgsBase::ElementTypeFromVarArgsType(type_accessor(args[n_args-1]));
 
     MethodBase^ best;
     List<MethodBase^>^ ties = nullptr;
     for each (MethodBase^ candidate in match)
     {
         array<ParameterInfo^>^ params = candidate->GetParameters();
-        if (check_conformance && !ArgsConformToParams(params, end_args, args, type_accessor))
+        if (check_conformance && !ArgsConformToParams(params, args, type_accessor))
             continue;
         if (!best)
         {
@@ -383,7 +383,7 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                     // Hmm. Tie-breaker is based on the 'expanded forms' of both
                     // parameter lists, i.e. we pretend they have as many arguments
                     // as necessary of the varying-argument type.
-                    for (int i = n_required; i < end_args; ++i)
+                    for (int i = n_required; i < n_args; ++i)
                     {
                         match = BetterConversion(type_accessor(args[i]), best_varying_type, varying_type);
                         if (match)
@@ -446,7 +446,7 @@ MethodBase^ LispBinder::SelectMethod (BindingFlags bindingAttr,
     if (match == nullptr || types == nullptr)
         throw gcnew ArgumentNullException();
     Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
-                                   types->Length, types,
+                                   types,
                                    TypeFromType);
     if (MethodInfo^ method = dynamic_cast<MethodInfo^>(result))
         return method;
@@ -470,7 +470,7 @@ PropertyInfo^ LispBinder::SelectProperty (BindingFlags bindingAttr,
     if (match == nullptr || indexes == nullptr)
         throw gcnew ArgumentNullException();
     Object^ result = SelectMethods(match, true, ParamsFromPropertyInfo, 
-                                   indexes->Length, indexes, TypeFromType);
+                                   indexes, TypeFromType);
     if (PropertyInfo^ method = dynamic_cast<PropertyInfo^>(result))
         return method;
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
@@ -492,16 +492,17 @@ int LispBinder::ReturnArraySize(MethodInfo^ method)
     }
     return return_size;
 }
-void LispBinder::BindArgs(array<ParameterInfo^>^ params,
-                          int n_args,
-                          array<Object^>^ args,
-                          array<Object^>^ new_args)
+array<Object^>^ LispBinder::BindArgs(array<ParameterInfo^>^ params,
+                                     array<Object^>^ args)
 {
-    assert(new_args->Length == params->Length);
+    int n_args = args->Length;
+    array<Object^>^ new_args
+        = (n_args == params->Length) ? args : gcnew array<Object^>(params->Length);
     int n_required = params->Length;
     Type^ varying_args_type = VaryingParamsType(params);
     if (varying_args_type)
         --n_required;
+    assert(n_args >= n_required);
     for (int i = 0; i < n_required; ++i)
         new_args[i] = ConvertTo(args[i], params[i]->ParameterType);
     if (varying_args_type)
@@ -520,6 +521,11 @@ void LispBinder::BindArgs(array<ParameterInfo^>^ params,
             }
             else
             {
+                // TODO: Possible optimization: If only one optional argument
+                // is present, we wouldn't need to allocate a new args array.
+                // However, we'd have to give some other indication to the
+                // caller that the last arg has to be 'unwrapped' after an
+                // invocation.
                 Array^ varargs = Array::CreateInstance(varying_args_type, n_args - n_required);
                 new_args[n_required] = varargs;
                 for (int i = 0; i < n_args-n_required; ++i)
@@ -527,6 +533,7 @@ void LispBinder::BindArgs(array<ParameterInfo^>^ params,
             }
         }
     }
+    return new_args;
 }
 MethodBase^ LispBinder::BindToMethod (BindingFlags bindingAttr,
                                       array<MethodBase^>^match,
@@ -540,23 +547,44 @@ MethodBase^ LispBinder::BindToMethod (BindingFlags bindingAttr,
     if ( match == nullptr || args == nullptr)
         throw gcnew ArgumentNullException;
     Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
-                                   args->Length, args, TypeFromObject);
+                                   args, TypeFromObject);
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
         throw gcnew AmbiguousMatchException("Multiple matches.");
     MethodInfo^ method = dynamic_cast<MethodInfo^>(result);
     if (!method)
         return nullptr;
-    array<Object^>^ new_args = gcnew array<Object^>(method->GetParameters()->Length);
-    BindArgs(method->GetParameters(), args->Length, args, new_args);
-    state = args;
+    array<Object^>^ new_args = BindArgs(method->GetParameters(), args);
+    if (new_args != args)
+        state = args;
     args = new_args;
     return method;
 }
 void LispBinder::ReorderArgumentArray (array<Object^>^% args,
-                                   Object^ state)
+                                       Object^ state)
 {
     if (array<Object^>^ old_args = dynamic_cast<array<Object^>^>(state))
-        args = old_args;
+    {
+        if (old_args != args)
+        {
+            // Copy values back to original array, and give that back
+            // to the caller. This should only occur when a variable
+            // argument list was involved.
+            // TODO: We held onto the caller's original arg array from
+            // BindToMethod, and now we're modifying it. Is that really
+            // kosher? Not sure.
+
+            // Copy required args first.
+            Array::Copy(args, old_args, args->Length - 1);
+
+            // Now copy the variable args.
+            if (old_args->Length > args->Length)
+            {
+                Array^ varargs = safe_cast<Array^>(args[args->Length-1]);
+                Array::Copy(varargs, 0, old_args, args->Length, varargs->Length);
+            }
+            args = old_args;
+        }
+    }
 }
 
 Object^ LispBinder::ChangeType (Object^ value,

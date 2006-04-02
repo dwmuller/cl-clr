@@ -10,7 +10,16 @@ extern "C" {
     // invoke a method, retrieve a property value, or retrieve a
     // field value.
     //
-    // object_handle is handle for the object on which the member is 
+    // The return value is a handle. If an exception is thrown, it
+    // is a handle for which returned_exception() will return a
+    // non-null handle. If the invocation returns no value, the
+    // returned handle will evoke a true result from is_void_return().
+    // Otherwise, it is the handle of the result value.
+    //
+    // Note that the void return handle is a persistent singleton. Do
+    // not release it!
+    //
+    // object_handle is a handle for the object on which the member is 
     // to be found, or a null pointer for a static method call.
     //
     // type_handle is a handle of a System.Type object to be used for
@@ -19,29 +28,20 @@ extern "C" {
     //
     // name is the name of the member.
     //
-    // args_return must be the handle of a array<Object^>, which is used
-    // to both pass in arguments and return the result value and by-ref
-    // output values. On return, the first element is -1 if an exception was
-    // thrown; a single exception object handle follows. Otherwise, the first
-    // argument indicates the number of index/value pairs that follow. Index
-    // 0 denotes the returned value. Index 1 denotes the value provided by the
-    // first argument, if it was a by-ref argument. Etc. All indexes are
-    // optional, and appear in ascending order.
-    //
-    // In order to accomodate all situations, the size of the input
-    // args_return array must be 3 + N, where N is the number of arguments.
-    //
-    // TODO: Consider using a void* array instead, to avoid the need
-    // to box the count and indexes on output. Have to figure out how
-    // to unpack such a beast using a Lisp FFI.
-    _declspec(dllexport) void invoke_member(clr_handle object_handle,
-                                            clr_handle type_handle,
-                                            const char* name,
-                                            int n_args,
-                                            clr_handle arg_return);
+    // args_handle is the handle of an System.Array of System.Object,
+    // the arguments.  If no arguments are required, this may be null.
+    // On return, array elements corresponding to by-ref parameters
+    // may have been updated. If an exception is indicated, the
+    // state of the args array contents is unreliable.
+    _declspec(dllexport) clr_handle invoke_member(clr_handle object_handle,
+                                                  clr_handle type_handle,
+                                                  const char* name,
+                                                  clr_handle args_handle);
 
-    // In order to use InvokeMember, we need a few functions to bootstrap
+    // In order to use invoke_member, we need a few functions to bootstrap
     // ourselves:
+    _declspec(dllexport) clr_handle returned_exception(clr_handle);
+    _declspec(dllexport) int is_void_return(clr_handle);
     _declspec(dllexport) clr_handle get_default_app_domain();
     _declspec(dllexport) clr_handle make_object_array(int n);
     _declspec(dllexport) clr_handle get_array_element(clr_handle arry, int index);
