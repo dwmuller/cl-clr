@@ -1,5 +1,5 @@
-// stdafx.cpp : source file that includes just the standard includes
-// SpookyDistance.CommonLispProxy.pch will be the pre-compiled header
-// stdafx.obj will contain the pre-compiled type information
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
 #include "stdafx.h"

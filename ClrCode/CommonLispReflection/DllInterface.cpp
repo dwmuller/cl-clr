@@ -1,4 +1,6 @@
-// This is the main DLL file.
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
 #include "stdafx.h"
 #include "DllInterface.h"
@@ -35,37 +37,18 @@ static inline Object^ GetObjectFromHandle(clr_handle handle)
     return ((GCHandle)IntPtr(handle)).Target;
 }
 
- // The Lisp system calls this to free an object for garbage collection.
- void ReleaseObjectHandle(clr_handle handle)
-{
-    if (handle)
-        ((GCHandle)IntPtr(handle)).Free();
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// Exported entry points
-
-
-// Everything starts from an application domain object:
-clr_handle GetRootAppDomain()
-{
-    return GetHandleFromObject(AppDomain::CurrentDomain);
-}
-
 ref class InvocableMemberPredicate {
     LispBinder^ binder;
     String^ name;
     int n_args;
     array<Object^>^ args;
-    bool allow_varying_args;
 public:
     InvocableMemberPredicate(LispBinder^ b,
                              String^ nm,
-                             bool allow_varargs,
                              int nargs,
                              array<Object^>^ a)
         : binder(b),
-          name(nm), allow_varying_args(allow_varargs),
+          name(nm),
           n_args(nargs),
           args(a)
     {
@@ -82,8 +65,7 @@ public:
                 && method->Name->Length == (name->Length + 4))
             {
                 return binder->ArgsConformToParams(method->GetParameters(),
-                                                   allow_varying_args,
-                                                   0, n_args, args,
+                                                   n_args, args,
                                                    LispBinder::TypeFromObject
                                                    );
             }
@@ -92,30 +74,52 @@ public:
     }
 };
 
-clr_handle MakeObjectArray(int n)
+//////////////////////////////////////////////////////////////////////////////
+// Exported entry points
+
+
+// Everything starts from an application domain object:
+clr_handle get_default_app_domain()
+{
+    return GetHandleFromObject(AppDomain::CurrentDomain);
+}
+
+clr_handle wrap_varargs_array(clr_handle args)
+{
+    Array^ arry = safe_cast<Array^>(GetObjectFromHandle(args));
+    return GetHandleFromObject(LispBinder::VarArgsBase::WrapVarArgs(arry));
+}
+
+clr_handle make_object_array(int n)
 {
     return GetHandleFromObject(gcnew array<Object^>(n));
 }
 
-clr_handle GetArrayElement(clr_handle arry, int index)
+clr_handle get_array_element(clr_handle arry, int index)
 {
     return GetHandleFromObject(safe_cast<Array^>(GetObjectFromHandle(arry))->GetValue(index));
 }
-void SetArrayElement(clr_handle arry, int index, clr_handle obj)
+void set_array_element(clr_handle arry, int index, clr_handle obj)
 {
     safe_cast<Array^>(GetObjectFromHandle(arry))->SetValue(GetObjectFromHandle(obj), index);
 }
-int IsSimpleType(clr_handle obj, const char* type_name)
+// The Lisp system calls this to free an object for garbage collection.
+ void release_object_handle(clr_handle handle)
+{
+    if (handle)
+        ((GCHandle)IntPtr(handle)).Free();
+}
+
+int is_simple_type(clr_handle obj, const char* type_name)
 {
     return GetObjectFromHandle(obj)->GetType()->FullName == gcnew String(type_name);
 }
 
-void InvokeMember(clr_handle object_handle,
-                  clr_handle type_handle,
-                  const char* name,
-                  int allow_varying_args,
-                  int n_args,
-                  clr_handle arg_return)
+void invoke_member(clr_handle object_handle,
+                   clr_handle type_handle,
+                   const char* name,
+                   int n_args,
+                   clr_handle arg_return)
 {
     array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(arg_return));
     try
@@ -137,7 +141,7 @@ void InvokeMember(clr_handle object_handle,
 
         LispBinder^ binder = gcnew LispBinder(false);
         String^ strname = gcnew String(name);
-        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, false, n_args, args),
+        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, n_args, args),
                                                      &InvocableMemberPredicate::IsInvocable);
         // In this search, note that we're not interested in properties,
         // but rather in their getters. The predicate object will pick
@@ -168,8 +172,7 @@ void InvokeMember(clr_handle object_handle,
                 Object^ members = binder->SelectMethods(candidates,
                                                         false, // Don't check type conformance, we already did.
                                                         LispBinder::ParamsFromMethodBase,
-                                                        allow_varying_args != 0,
-                                                        0, n_args, args, LispBinder::TypeFromObject);
+                                                        n_args, args, LispBinder::TypeFromObject);
 
                 if (MethodInfo^ method = dynamic_cast<MethodInfo^>(members))
                 {
@@ -177,7 +180,7 @@ void InvokeMember(clr_handle object_handle,
                     array<Object^>^ real_args = args;
                     if (args->Length != params->Length)
                         real_args = gcnew array<Object^>(params->Length);
-                    binder->BindArgs(params, allow_varying_args != 0, 0, n_args, args, real_args);
+                    binder->BindArgs(params, n_args, args, real_args);
                     Object^ result = method->Invoke(object, real_args);
 
                     // Now pack all the outputs back into args. We have to
@@ -257,11 +260,11 @@ void InvokeMember(clr_handle object_handle,
 // Boxing functions
 
 #define DEF_BOX(name, c_type) \
-    clr_handle Box##name(c_type value) \
+    clr_handle box_##name(c_type value) \
     { \
         return GetHandleFromObject(safe_cast<System::name^>(value)); \
     } \
-    c_type Unbox##name(clr_handle handle) \
+    c_type unbox_##name(clr_handle handle) \
     { \
         return safe_cast<c_type>(GetObjectFromHandle(handle)); \
     }
@@ -273,35 +276,35 @@ DEF_BOX(Int64,   long long);
 DEF_BOX(Double,  double);
 DEF_BOX(Single,  float);
 
-clr_handle BoxString(const char* value)
+clr_handle box_String(const char* value)
 {
     return GetHandleFromObject(gcnew System::String(value));
 }
-const char* UnboxString(clr_handle handle)
+const char* unbox_String(clr_handle handle)
 {
     return reinterpret_cast<const char*>(Marshal::StringToHGlobalAnsi(safe_cast<String^>(GetObjectFromHandle(handle))).ToPointer());
 }
-clr_handle BoxChar(int value)
+clr_handle box_Char(int value)
 {
     return GetHandleFromObject(static_cast<System::Char^>((wchar_t)value));
 }
-int UnboxChar(clr_handle handle)
+int unbox_Char(clr_handle handle)
 {
     return *safe_cast<Char^>(GetObjectFromHandle(handle));
 }
-clr_handle BoxBoolean(int value)
+clr_handle box_Boolean(int value)
 {
     return GetHandleFromObject(static_cast<System::Boolean^>(value != 0));
 }
-int UnboxBoolean(clr_handle handle)
+int unbox_Boolean(clr_handle handle)
 {
     return *safe_cast<Boolean^>(GetObjectFromHandle(handle)) == true;
 }
-clr_handle BoxSingleFromDouble(double value)
+clr_handle box_SingleFromDouble(double value)
 {
     return GetHandleFromObject(safe_cast<Single^>((float)value));
 }
-double UnBoxDoubleFromSingle(clr_handle handle)
+double unbox_DoubleFromSingle(clr_handle handle)
 {
     return *safe_cast<Single^>(GetObjectFromHandle(handle));
 }

@@ -1,6 +1,6 @@
-// stdafx.h : include file for standard system include files,
-// or project specific include files that are used frequently,
-// but are changed infrequently
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
 #pragma once
 

@@ -1,3 +1,7 @@
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
+
 #include "stdafx.h"
 #include <assert.h>
 #include "LispBinder.h"
@@ -233,25 +237,13 @@ int LispBinder::BetterConversion(Type^ s, Type^ t1, Type^ t2)
     return 0;
 }
 
-bool LispBinder::ArgTypesConform(int begin, int end,
-                     array<Object^>^ args,
-                     Type^ (type_accessor)(Object^),
-                     array<ParameterInfo^>^ params)
+int LispBinder::BetterArgsMatch(int n_args,
+                                array<Object^>^ args,
+                                Type^ (type_accessor)(Object^),
+                                array<ParameterInfo^>^ params1,
+                                array<ParameterInfo^>^ params2)
 {
-    for (int i = begin; i < end; ++i)
-    {
-        if (!IsConvertibleTo(type_accessor(args[i]), params[i]->ParameterType))
-            return false;
-    }
-    return true;
-}
-int LispBinder::BetterArgsMatch(int begin, int end,
-                    array<Object^>^ args,
-                    Type^ (type_accessor)(Object^),
-                    array<ParameterInfo^>^ params1,
-                    array<ParameterInfo^>^ params2)
-{
-    for (int i = begin; i < end; ++i)
+    for (int i = 0; i < n_args; ++i)
     {
         int match = BetterConversion(type_accessor(args[i]),
                                      params1[i]->ParameterType,
@@ -265,7 +257,7 @@ int LispBinder::BetterArgsMatch(int begin, int end,
 // if it's a param array denoting the ability to receive a
 // variable length argument list. Returns nullptr if the
 // parameter list is empty or does not end in a param array.
-Type^ LispBinder::VaryingArgsType(array<ParameterInfo^>^ params)
+Type^ LispBinder::VaryingParamsType(array<ParameterInfo^>^ params)
 {
     if (!params->Length)
         return nullptr;
@@ -295,40 +287,48 @@ array<ParameterInfo^>^ LispBinder::ParamsFromMethodBase(Object^ info)
 {
     return safe_cast<MethodBase^>(info)->GetParameters();
 }
-bool LispBinder::ArgsConformToParams(array<ParameterInfo^>^ params, bool allow_varying_args,
-                         int begin_args, int end_args, array<Object^>^ args,
-                         Type^ (type_accessor)(Object^ obj))
+bool LispBinder::ArgsConformToParams(array<ParameterInfo^>^ params,
+                                     int n_args, array<Object^>^ args,
+                                     Type^ (type_accessor)(Object^ obj))
 {
     int n_params = params->Length;
     int n_required = n_params;
-    Type^ varying_type = nullptr;
-    if (allow_varying_args)
-        varying_type = VaryingArgsType(params);
+    Type^ varying_type = VaryingParamsType(params);
     if (varying_type)
         --n_required;
-    if (!ArgTypesConform(begin_args, n_required + begin_args, args, type_accessor, params))
-        return false;
-    int n_args = end_args - begin_args;
     if (n_required > n_args)
         return false;
-    if (n_required < n_args)
+    if ((n_args > n_required) && !varying_type)
+        return false;
+    for (int i = 0; i < n_required; ++i)
     {
-        if (!varying_type)
-            return false;
-        // Check varying args for convertability to param array element type.
-        bool matches = true;
-        for (int i = begin_args + n_required; matches && i < end_args; ++i)
-            matches = IsConvertibleTo(type_accessor(args[i]), varying_type);
-        if (!matches)
+        if (!IsConvertibleTo(type_accessor(args[i]), params[i]->ParameterType))
             return false;
     }
+    if (n_args == n_required)
+        return true;
+
+    // If we get here, there are optional arguments, and
+    // the parameter list allows varying args.
+
+    if ((n_args-n_required) == 1)
+    {
+        Type^ var_args_type = VarArgsBase::ElementTypeFromVarArgsType(type_accessor(args[n_required]));
+        if (var_args_type)
+            return varying_type->IsAssignableFrom(var_args_type);
+    }
+
+    // Check varying args for convertability to param array element type.
+    bool matches = true;
+    for (int i = n_required; matches && i < n_args; ++i)
+        matches = IsConvertibleTo(type_accessor(args[i]), varying_type);
+    if (!matches)
+        return false;
     return true;
 }
 Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                                    bool check_conformance,
                                    array<ParameterInfo^>^ (params_accessor)(Object^ info),
-                                   bool allow_varying_args,
-                                   int begin_args,
                                    int end_args,
                                    array<Object^>^ args,
                                    Type^ (type_accessor)(Object^ obj))
@@ -337,14 +337,20 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
         throw gcnew ArgumentNullException;
     if ( match->Length == 0)
         return nullptr;
-    int n_args = end_args - begin_args;
+    int n_args = end_args;
+
+    // If the last argument is a VarArgs array, this will be
+    // the type of its elements.
+    Type^ var_args_type = nullptr;
+    if (n_args > 0)
+        Type^ var_args_type = VarArgsBase::ElementTypeFromVarArgsType(type_accessor(args[end_args-1]));
 
     MethodBase^ best;
     List<MethodBase^>^ ties = nullptr;
     for each (MethodBase^ candidate in match)
     {
         array<ParameterInfo^>^ params = candidate->GetParameters();
-        if (check_conformance && !ArgsConformToParams(params, allow_varying_args, begin_args, end_args, args, type_accessor))
+        if (check_conformance && !ArgsConformToParams(params, end_args, args, type_accessor))
             continue;
         if (!best)
         {
@@ -353,32 +359,31 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
         }
         int n_required = params->Length;
         Type^ varying_type = nullptr;
-        if (allow_varying_args)
-        varying_type = VaryingArgsType(params);
+        if (!var_args_type)
+            varying_type = VaryingParamsType(params);
         if (varying_type)
             --n_required;
         // 0 = tie
         // 1 = candidate is worse than best
         // 2 = candidate is better than best
-        int match = BetterArgsMatch(begin_args,
-                                    begin_args + n_required,
+        int match = BetterArgsMatch(n_required,
                                     args,
                                     type_accessor,
                                     best->GetParameters(),
                                     params);
         // If it's a tie so far, but one takes a varying argument list and
         // the other doesn't, then the one without varying args wins.
-        if (match == 0 && allow_varying_args)
+        if (match == 0 && !var_args_type)
         {
             if (varying_type)
             {
-                Type^ best_varying_type = VaryingArgsType(best->GetParameters());
+                Type^ best_varying_type = VaryingParamsType(best->GetParameters());
                 if (best_varying_type)
                 {
                     // Hmm. Tie-breaker is based on the 'expanded forms' of both
                     // parameter lists, i.e. we pretend they have as many arguments
                     // as necessary of the varying-argument type.
-                    for (int i = begin_args + n_required; i < end_args; ++i)
+                    for (int i = n_required; i < end_args; ++i)
                     {
                         match = BetterConversion(type_accessor(args[i]), best_varying_type, varying_type);
                         if (match)
@@ -386,7 +391,7 @@ Object^ LispBinder::SelectMethods (array<MemberInfo^>^ match,
                     }
                 }
             }
-            else if (VaryingArgsType(best->GetParameters()))
+            else if (VaryingParamsType(best->GetParameters()))
             {
                 match = 2;
             }
@@ -440,15 +445,8 @@ MethodBase^ LispBinder::SelectMethod (BindingFlags bindingAttr,
 {
     if (match == nullptr || types == nullptr)
         throw gcnew ArgumentNullException();
-    bool allow_varying_args = true;
-    int begin_types = 0;
-    if (types->Length && types[0] == SuppressParamsKeyword::typeid)
-    {
-        allow_varying_args = false;
-        begin_types = 1;
-    }
-    Object^ result = SelectMethods(match, true, ParamsFromMethodBase, allow_varying_args,
-                                   begin_types, types->Length, types,
+    Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
+                                   types->Length, types,
                                    TypeFromType);
     if (MethodInfo^ method = dynamic_cast<MethodInfo^>(result))
         return method;
@@ -471,15 +469,8 @@ PropertyInfo^ LispBinder::SelectProperty (BindingFlags bindingAttr,
 {
     if (match == nullptr || indexes == nullptr)
         throw gcnew ArgumentNullException();
-    bool allow_varying_args = true;
-    int begin_indexes = 0;
-    if (indexes->Length && indexes[0] == SuppressParamsKeyword::typeid)
-    {
-        allow_varying_args = false;
-        begin_indexes = 1;
-    }
-    Object^ result = SelectMethods(match, true, ParamsFromPropertyInfo, allow_varying_args,
-                                   begin_indexes, indexes->Length, indexes, TypeFromType);
+    Object^ result = SelectMethods(match, true, ParamsFromPropertyInfo, 
+                                   indexes->Length, indexes, TypeFromType);
     if (PropertyInfo^ method = dynamic_cast<PropertyInfo^>(result))
         return method;
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
@@ -502,56 +493,61 @@ int LispBinder::ReturnArraySize(MethodInfo^ method)
     return return_size;
 }
 void LispBinder::BindArgs(array<ParameterInfo^>^ params,
-                          bool allow_varying_args,
-                          int begin_args, int end_args,
+                          int n_args,
                           array<Object^>^ args,
                           array<Object^>^ new_args)
 {
     assert(new_args->Length == params->Length);
-    int n_args = end_args - begin_args;
     int n_required = params->Length;
-    Type^ varying_args_type = nullptr;
-    if (allow_varying_args)
-        varying_args_type = VaryingArgsType(params);
+    Type^ varying_args_type = VaryingParamsType(params);
     if (varying_args_type)
         --n_required;
     for (int i = 0; i < n_required; ++i)
-        new_args[i] = ConvertTo(args[begin_args+i], params[i]->ParameterType);
+        new_args[i] = ConvertTo(args[i], params[i]->ParameterType);
     if (varying_args_type)
     {
-        array<Object^>^ var_args = gcnew array<Object^>(n_args - n_required);
-        new_args[n_required] = var_args;
-        for (int i = 0; i < n_args-n_required; ++i)
-            var_args[i] = ConvertTo(args[begin_args+i+n_required], varying_args_type);
+        if (n_required == n_args)
+        {
+            // TODO: Is an empty array really necessary?
+            new_args[n_required] = System::Array::CreateInstance(varying_args_type, 0);
+        }
+        else
+        {
+            VarArgsBase^ wrapped_varargs = dynamic_cast<VarArgsBase^>(args[n_required]);
+            if (wrapped_varargs)
+            {
+                new_args[n_required] = wrapped_varargs->Args;
+            }
+            else
+            {
+                Array^ varargs = Array::CreateInstance(varying_args_type, n_args - n_required);
+                new_args[n_required] = varargs;
+                for (int i = 0; i < n_args-n_required; ++i)
+                    varargs->SetValue(ConvertTo(args[i+n_required], varying_args_type), i);
+            }
+        }
     }
 }
 MethodBase^ LispBinder::BindToMethod (BindingFlags bindingAttr,
-                                  array<MethodBase^>^match,
-                                  array<Object^>^%args,
-                                  array<ParameterModifier>^ modifiers,
-                                  CultureInfo^ culture,
-                                  array<String^>^names,
-                                  [Out]Object^% state )
+                                      array<MethodBase^>^match,
+                                      array<Object^>^%args,
+                                      array<ParameterModifier>^ modifiers,
+                                      CultureInfo^ culture,
+                                      array<String^>^names,
+                                      [Out]Object^% state )
 {
     state = nullptr;
     if ( match == nullptr || args == nullptr)
         throw gcnew ArgumentNullException;
-    bool allow_varying_args = true;
-    int begin_args = 0;
-    if (args->Length && args[0] == SuppressParamsKeyword::Instance)
-    {
-        allow_varying_args = false;
-        begin_args = 1;
-    }
-    Object^ result = SelectMethods(match, true, ParamsFromMethodBase, allow_varying_args,
-                                   begin_args, args->Length, args, TypeFromObject);
+    Object^ result = SelectMethods(match, true, ParamsFromMethodBase,
+                                   args->Length, args, TypeFromObject);
     if (array<MemberInfo^>^ methods = dynamic_cast<array<MemberInfo^>^>(result))
         throw gcnew AmbiguousMatchException("Multiple matches.");
     MethodInfo^ method = dynamic_cast<MethodInfo^>(result);
     if (!method)
         return nullptr;
     array<Object^>^ new_args = gcnew array<Object^>(method->GetParameters()->Length);
-    BindArgs(method->GetParameters(), allow_varying_args, begin_args, args->Length, args, new_args);
+    BindArgs(method->GetParameters(), args->Length, args, new_args);
     state = args;
     args = new_args;
     return method;

@@ -1,3 +1,7 @@
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
+
 namespace SpookyDistance
 {
     namespace CommonLispReflection
@@ -13,6 +17,63 @@ namespace SpookyDistance
             void init();
 
         public:
+            // This class is used to wrap a final argument in a call to indicate
+            // that it should be treated as a list of varying arguments. The call
+            // can then match only members whose final parameter is marked with
+            // the ParamArrayAttribute, and then only if the object wrapped by
+            // VarArgs matches the type of that parameter.
+            ref class VarArgsBase abstract
+            {
+            protected:
+                VarArgsBase() {}
+            public:
+                property System::Array^ Args {
+                    virtual System::Array^ get () abstract;
+                }
+                property System::Type^ ElementType
+                {
+                    virtual System::Type^ get () abstract;
+                }
+                static VarArgsBase^ WrapVarArgs(System::Array^ args)
+                {
+                    // See http://weblogs.asp.net/pwelter34/archive/2005/08/13/422482.aspx;
+                    System::Type^ generic_type = VarArgs<int>::typeid->MakeGenericType();
+                    return safe_cast<VarArgsBase^>
+                        (System::Activator::CreateInstance(generic_type->MakeGenericType(args->GetType()->GetElementType()),
+                                                           args));
+                }
+                static System::Type^ ElementTypeFromVarArgsType(System::Type^ type)
+                {
+                    if (!VarArgsBase::typeid->IsAssignableFrom(type))
+                        return nullptr;
+                    return safe_cast<System::Type^>(type->GetGenericArguments()->GetValue(0));
+                }
+            };
+            template <class ELEM_TYPE>
+            ref class VarArgs : VarArgsBase
+            {
+                array<ELEM_TYPE^>^ args;
+            public:
+                explicit VarArgs(array<ELEM_TYPE^>^ obj)
+                    : args(obj)
+                {
+                }
+                property System::Type^ ElementType
+                {
+                    virtual System::Type^ get () override
+                    {
+                        return ELEM_TYPE::typeid;
+                    }
+                }
+                property System::Array^ Args
+                {
+                    virtual System::Array^ get () override
+                    {
+                        return args;
+                    }
+                }
+            };
+
             LispBinder();
             // Providing "true" to this constructor allows doubles to be implicitly
             // narrowed to singles in order to match signatures and invoke members.
@@ -24,22 +85,18 @@ namespace SpookyDistance
             int BetterConversion(System::Type^ s, System::Type^ t1, System::Type^ t2);
 
             // Low-level operations on collections of arguments or types and parameter lists
-            bool ArgTypesConform(int begin, int end,
-                                 array<System::Object^>^ args,
-                                 System::Type^ (type_accessor)(System::Object^),
-                                 array<System::Reflection::ParameterInfo^>^ params);
-            int BetterArgsMatch(int begin, int end,
+            int BetterArgsMatch(int n_args,
                                 array<System::Object^>^ args,
                                 System::Type^ (type_accessor)(System::Object^),
                                 array<System::Reflection::ParameterInfo^>^ params1,
                                 array<System::Reflection::ParameterInfo^>^ params2);
-            bool ArgsConformToParams(array<System::Reflection::ParameterInfo^>^ params, bool allow_varying_args,
-                                     int begin_args, int end_args, array<System::Object^>^ args,
+            bool ArgsConformToParams(array<System::Reflection::ParameterInfo^>^ params,
+                                     int n_args, array<System::Object^>^ args,
                                      System::Type^ (type_accessor)(System::Object^ obj));
 
             // Static helper function to check for a "parameter array" parameter in the last
             // position of a parameter list. Returns nullptr if there is none.
-            static System::Type^ VaryingArgsType(array<System::Reflection::ParameterInfo^>^ params);
+            static System::Type^ VaryingParamsType(array<System::Reflection::ParameterInfo^>^ params);
 
             // Static helper functions that can be passed to the above.
             static System::Type^ TypeFromObject(System::Object^ obj); // Calls GetType
@@ -52,16 +109,14 @@ namespace SpookyDistance
             // the same. The output arg list length must exactly match the params
             // list length.
             void BindArgs(array<System::Reflection::ParameterInfo^>^ params,
-                                             bool allow_varying_args,
-                                             int begin_args, int end_args,
+                                             int n_args,
                                              array<System::Object^>^ args,
                                              array<System::Object^>^ new_args);
 
             System::Object^ SelectMethods (array<System::Reflection::MemberInfo^>^ match,
                                            bool check_conformance,
                                            array<System::Reflection::ParameterInfo^>^ (params_accessor)(System::Object^ info),
-                                           bool allow_varying_args,
-                                           int begin_args, int end_args,
+                                           int n_args,
                                            array<System::Object^>^ args,
                                            System::Type^ (type_accessor)(System::Object^ obj));
 

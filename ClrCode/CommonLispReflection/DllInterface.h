@@ -1,8 +1,12 @@
+// $Id:$
+//
+// Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
+
 #pragma once
 
 extern "C" {
     typedef void* clr_handle;
-    // InvokeMember is analogous to System.Type.InvokeMember. It can
+    // invoke_member is analogous to System.Type.InvokeMember. It can
     // invoke a method, retrieve a property value, or retrieve a
     // field value.
     //
@@ -30,43 +34,42 @@ extern "C" {
     // TODO: Consider using a void* array instead, to avoid the need
     // to box the count and indexes on output. Have to figure out how
     // to unpack such a beast using a Lisp FFI.
-    _declspec(dllexport) void InvokeMember(clr_handle object_handle,
-                                           clr_handle type_handle,
-                                           const char* name,
-                                           int allow_varying_args,
-                                           int n_args,
-                                           clr_handle arg_return);
+    _declspec(dllexport) void invoke_member(clr_handle object_handle,
+                                            clr_handle type_handle,
+                                            const char* name,
+                                            int n_args,
+                                            clr_handle arg_return);
 
     // In order to use InvokeMember, we need a few functions to bootstrap
     // ourselves:
-    _declspec(dllexport) clr_handle GetRootAppDomain();
-    _declspec(dllexport) clr_handle MakeObjectArray(int n);
-    _declspec(dllexport) clr_handle GetArrayElement(clr_handle arry, int index);
-    _declspec(dllexport) void SetArrayElement(clr_handle arry, int index, clr_handle obj);
-    _declspec(dllexport) int UnboxInt32(clr_handle);
-    _declspec(dllexport) void ReleaseObjectHandle(clr_handle handle);
-    _declspec(dllexport) int IsSimpleType(clr_handle obj, const char* type);
+    _declspec(dllexport) clr_handle get_default_app_domain();
+    _declspec(dllexport) clr_handle make_object_array(int n);
+    _declspec(dllexport) clr_handle get_array_element(clr_handle arry, int index);
+    _declspec(dllexport) void set_array_element(clr_handle arry, int index, clr_handle obj);
+    _declspec(dllexport) clr_handle wrap_varargs_array(clr_handle args);
+    _declspec(dllexport) void release_object_handle(clr_handle handle);
+    _declspec(dllexport) int is_simple_type(clr_handle obj, const char* type);
 
     // Would like to use stdint.h names here, but VS doesn't have that file.
-    _declspec(dllexport) clr_handle BoxByte   (unsigned char);
-    _declspec(dllexport) clr_handle BoxInt16  (short);
-    _declspec(dllexport) clr_handle BoxInt32  (int);
-    _declspec(dllexport) clr_handle BoxInt64  (long long);
-    _declspec(dllexport) clr_handle BoxString (const char*);
-    _declspec(dllexport) clr_handle BoxDouble (double);
-    _declspec(dllexport) clr_handle BoxSingle (float);
-    _declspec(dllexport) clr_handle BoxChar   (int);
-    _declspec(dllexport) clr_handle BoxBoolean(int);
-    _declspec(dllexport) clr_handle BoxSingleFromDouble(double);
+    _declspec(dllexport) clr_handle box_Byte   (unsigned char);
+    _declspec(dllexport) clr_handle box_Int16  (short);
+    _declspec(dllexport) clr_handle box_Int32  (int);
+    _declspec(dllexport) clr_handle box_Int64  (long long);
+    _declspec(dllexport) clr_handle box_String (const char*);
+    _declspec(dllexport) clr_handle box_Double (double);
+    _declspec(dllexport) clr_handle box_Single (float);
+    _declspec(dllexport) clr_handle box_Char   (int);
+    _declspec(dllexport) clr_handle box_Boolean(int);
+    _declspec(dllexport) clr_handle box_SingleFromDouble(double);
 
-    _declspec(dllexport) unsigned char UnboxByte   (clr_handle);
-    _declspec(dllexport) short         UnboxInt16  (clr_handle);
-    _declspec(dllexport) int           UnboxInt32  (clr_handle);
-    _declspec(dllexport) long long     UnboxInt64  (clr_handle);
-    _declspec(dllexport) const char*   UnboxString (clr_handle);
-    _declspec(dllexport) double        UnboxDouble (clr_handle);
-    _declspec(dllexport) float         UnboxSingle (clr_handle);
-    _declspec(dllexport) int           UnboxChar   (clr_handle);
-    _declspec(dllexport) int           UnboxBoolean(clr_handle);
-    _declspec(dllexport) double        UnBoxDoubleFromSingle(clr_handle);
+    _declspec(dllexport) unsigned char unbox_Byte   (clr_handle);
+    _declspec(dllexport) short         unbox_Int16  (clr_handle);
+    _declspec(dllexport) int           unbox_Int32  (clr_handle);
+    _declspec(dllexport) long long     unbox_Int64  (clr_handle);
+    _declspec(dllexport) const char*   unbox_String (clr_handle);
+    _declspec(dllexport) double        unbox_Double (clr_handle);
+    _declspec(dllexport) float         unbox_Single (clr_handle);
+    _declspec(dllexport) int           unbox_Char   (clr_handle);
+    _declspec(dllexport) int           unbox_Boolean(clr_handle);
+    _declspec(dllexport) double        unbox_DoubleFromSingle(clr_handle);
 }
