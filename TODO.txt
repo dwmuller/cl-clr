@@ -1,26 +1,23 @@
 
-*** Development of a new bottom layer is well under way!
+Check list of exported symbols and clean up packages.lisp.
 
-Set up a unit test framework, with a test assembly containing 
-unusual class definitions to excercise corner cases.
+Check all exported functions to make sure we're doing good argument
+error reporting. (E.g. use ARG-TO-TYPE-OBJECT and
+TYPE-ARG-TO-TYPE-OBJECT wherever appropriate.)
 
-Implement SetMember.
-
-Implement TREAT-AS. Requires work in invocation and substrate.
+Rework marking of varargs arrays. If it's possible to derive the
+marker class from Array, do so -- it would be more efficient!
 
 Convert exceptions to an appropriate condition.
 
-Convert CL-CLR to use the new substrate. Must be done all at
-once, since the RDNZL containers are not interoperable with
-CLR-OBJECT.
-
 Reimplement DEFINE-CLR-CALL. First version might be stupid.
 
-Test by-ref types and multiple-value returns.
+Test by-ref types -- probably need to do some work to make these
+happen.
 
-Improve exception messages in substrate. (Esp. ambiguous calls.)
+Implement TREAT-AS. Requires work in invocation and substrate.
 
-Implement vararg suppression.
+Improve exception messages in substrate -- esp. bad arg values.
 
 Disconnect reader syntax enablement from adding packages to the
 use-list. Needed in the REPL.
@@ -33,10 +30,12 @@ conversion from a CLR type. Subclassing CLR-OBJECT is a possibility.
 Need to find a unique type ID in CLR, or we'll be doing string-keyed
 hashing.
 
-Maybe: Fix/finish Binder implementation. Expose binder from DLL
-for others to experiment with. Returning a customized MethodInfo
-wrapper might be an avenue to faster calls -- look for opportunities
-to cache work results.
+Look for opportunities to clean up the LispBinder, provided it
+continues to work out OK as the focal point of the substrate.
+
+In the same vein, consider returning a customized MethodInfo wrapper
+might be an avenue to faster calls -- look for opportunities to cache
+work results.
 
 Implement vendor-specific logic for freeing handles. (Done for
 Lispworks.)

@@ -7,7 +7,7 @@
 (defun init-clr ()
   "Initializes CLCLR, and loads objects previously referenced by
 the system."
-  (init-rdnzl)
+  (init-ffi)
   (init-symbols)
   (values))
 
@@ -16,8 +16,8 @@ the system."
 INIT-CLR can reconstitute the current environment if the
 necessary assemblies are already loaded and define the necessary
 types and members."
-  (release-symbols)
-  (shutdown-rdnzl)
+  (shutdown-symbols)
+  (shutdown-ffi)
   (values))
 
 (eval-when (:load-toplevel :execute)

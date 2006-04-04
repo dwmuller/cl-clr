@@ -69,7 +69,7 @@ topmost context is the current one.")
   (member chr +whitespace-char-list+ :test #'char=))
 
 (defun lookup-type-symbol (type-name)
-  (get-type-symbol
+  (clr-type-object-to-symbol
    (find-type-from-name type-name
                         (namespaces (current-context)))))
 
@@ -155,7 +155,7 @@ usually as the last top-level form in a file."
      (eval-when (:compile-toplevel :execute)
        ,@(when dump
               `((format t "~&The following CLR types were referenced:~%~{  ~A~%~}"
-                        (map 'list #'get-type-name-from-symbol
+                        (map 'list #'symbol-to-clr-type-name
                            ',(types (current-context))))
                 (format t "~&The following CLR members were referenced:~%~{  ~A~%~}"
                         (map 'list #'symbol-name

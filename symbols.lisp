@@ -2,232 +2,109 @@
 ;;;
 ;;; Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 ;;;
-;;; Functions to create and use symbols that represent CLR tokens.
+;;; Functions to create and use symbols that represent CLR types and
+;;; members.
 ;;;
-;;; These key functions in here are GET-TYPE-SYMBOL and
-;;; GET-MEMBER-SYMBOL.  The functions in this file deal only with
-;;; namespace-qualified type names.
-;;;
+
 (in-package :cl-clr)
 
 (defvar *namespace-packages* nil
   "List of packages created to represent namespaces.")
 
-(defvar *null-object* nil
-  "A null object for use in various generated functions.")
+(defun symbol-to-clr-type-name (sym)
+  "Given a symbol designating a CLR type, returns the
+namespace-qualifier name string of the type."
+  (let* ((pkg             (symbol-package sym))
+         (pkg-name        (and pkg (package-name pkg)))
+         (namespace-name  (and (eql 4 (mismatch pkg-name "CLR!"))
+                               (subseq pkg-name 4))))
+    (unless namespace-name
+      (error "Symbol ~S does not designate a CLR type." sym))
+     (concatenate 'string namespace-name "." (symbol-name sym))))
+     
+(defun symbol-to-clr-type-object (arg)
+  "ARG must be a symbol designating a CLR type object. Returns
+the type object."
+  (if (symbolp arg)
+      (or (get arg 'clr-type)
+          (setf (get arg 'clr-type)
+                (find-type-from-namespace-qualified-name
+                 (symbol-to-clr-type-name arg))))
+      (t (error "Expected string, symbol, or CLR object, but got ~S." arg))))
 
-(defvar *empty-object-array* nil
-  "A null object array for use in various generated functions.")
 
-(defvar *default-binding-object* nil
-  "A default binding object for use in invocation calls.")
+(defun clr-type-object-to-symbol (type-object)
+  (multiple-value-bind (namespace type-name)
+      (split-type-name (invoke-member type-object "FullName"))
+    (let ((package     (get-namespace-package namespace)))
+      (multiple-value-bind (type-symbol status) (intern type-name package)
+        (unless (eq status :external)
+          (bind-type-symbol type-symbol type-object)
+          (export type-symbol package)
+          (import (get type-symbol 'clr-members) package)
+          (export (get type-symbol 'clr-members) package))
+        type-symbol))))
 
-(defvar *static-member-binding-flags* nil)
-(defvar *static-set-prop-or-field-binding-flags* nil)
-(defvar *instance-member-binding-flags* nil)
-(defvar *instance-set-prop-or-field-binding-flags* nil)
+(defun clr-type-name-to-symbol (type-name)
+  (clr-type-object-to-symbol
+   (find-type-from-namespace-qualified-name type-name)))
 
-(defclass clr-ref ()
-    ((reference :initarg :reference
-                :accessor reference-of
-                :documentation "A RDNZL:CONTAINER of reference type.")
-     (setter    :initarg :setter
-                :accessor setter-of
-                :documentation "A closure to take the new value
-and deposit it in its destination.")))
+(defun clr-type-of (obj)
+  "Given a CLR object, returns the symbol denoting the object's
+CLR type."
+  (unless (clr-object-p obj)
+    (error "Expected a CLR object, got ~S." obj))
+  (clr-type-object-to-symbol (invoke-member obj "GetType")))
 
-(defmacro ref (form)
-  "Marks an argument of a call to a CLR method as
-by-reference. FORM must be a setf-able form. Returns an object of
-a type internal to CL-CLR."
-  (error "Not implemented yet."))
+(defun type-arg-to-type-object (arg)
+  "Converts an argument value which is required to be a type
+designator to a type object. Contrast with ARG-TO-TYPE-OBJECT."
+  (cond ((symbolp arg) (symbol-to-clr-type-object arg))
+        ((clr-object-p arg) arg)
+        ((stringp arg) (find-type-from-namespace-qualified-name arg))
+        (t (error "Expected type designator (a symbol, CLR type object, type name string), but got ~S." arg))))
 
-(defmacro define-clr-call (lisp-name
-                           (&key clr-name
-                                 type-name
-                                 member-kind
-                                 doc-string)
-                           args)
-  `(define-rdnzl-call
-       ,lisp-name
-       (,@(when clr-name (list :dotnet-name clr-name))
-        ,@(when type-name (list :type-name
-                                (if (symbolp type-name)
-                                    (property (get-type-object type-name)
-                                              "AssemblyQualifiedName")
-                                    type-name)))
-        ,@(when member-kind (list :member-kind member-kind))
-        ,@(when doc-string (list :doc-string doc-string)))
-     ,(map 'list #'(lambda (arg-spec)
-                     (if (symbolp (second arg-spec))
-                         (list (first arg-spec)
-                               (property (get-type-object (second arg-spec))
-                                         "AssemblyQualifiedName"))
-                         arg-spec))
-           args)))
-
-(defun list-to-clr-array (list &optional (base-type (get-type-object "System.Object")))
-  "Creates and returns a CLR array of base type BASE-TYPE \(a
-CONTAINER, type name string, or symbol representing a CLR type)
-and rank 1 with the elements from the Lisp list LIST. BASE-TYPE defaults to System.Object."
-  (list-to-rdnzl-array list (if (symbolp base-type)
-                                (get-type-object base-type)
-                                base-type)))
-
-(defun clr-array-to-list (array)
-  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
-same elements."
-  (rdnzl-array-to-list array))
-
-(defmacro do-clr-array ((var array-form &optional result) &body body)
-  "ARRAY-FORM should be a form which evaluates to a CONTAINER
-structure wrapping a CLR array of rank 1.  BODY will be evaluated
-with VAR bound to each element of this array \(as a CONTAINER) in
-turn.  Finally, the result of evaluating the form RESULT is returned."
-  `(do-rdnzl-array ((,var ,array-form ,@(when result (list result))))
-     ,@body))
-
-(define-rdnzl-call generic-invoke-member
-    (:dotnet-name "InvokeMember")
-  ((type "System.Type")
-   (name "System.String")
-   (invoke-attr "System.Reflection.BindingFlags")
-   (binder "System.Reflection.Binder")
-   (target "System.Object")
-   (args   "System.Object[]")))
-
-(define-rdnzl-call get-type
-    ()
-  ((object "System.Object")))
+(defun arg-to-type-object (arg)
+  "Converts an argument value which might be a symbol designating
+a CLR type to the corresponding object. If ARG is not such a
+symbol, returns NIL."
+  (when (symbolp arg)
+    (symbol-to-clr-type-object arg)))
 
 (defun new (type &rest args)
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
-  (apply #'rdnzl:new
-         (cond 
-           ((symbolp type) (get-type-object type))
-           ((container-p type) type)
-           ((stringp type) (find-type-from-namespace-qualified-name type))
-           (t (error "~S is not a symbol, CLR object, or string designating a CLR type."
-                     type)))
-         args))
+  (apply #'invoke-new (type-arg-to-type-object type) args))
 
-(defun make-null-object (type)
-  (rdnzl:make-null-object
-   (property
-    (cond
-      ((symbolp type) (get-type-object type))
-      ((container-p type) type)
-      ((stringp type) (find-type-from-namespace-qualified-name type))
-      (t (error "~S is not a symbol, CLR object, or string designating a CLR type."
-                type)))
-    "FullName")))
-                            
-
-(defun binding-flag (name)
-  (field "System.Reflection.BindingFlags" name))
-
-(defun force-type (obj)
-  "A hack to experiment with always using the run-time type,
-  rather than the apparent type, for containers."
-  (if (container-p obj)
-      (cast obj (get-type obj))
-      obj))
-
-;; NOTE NOTE NOTE
-;;
-;; Might have to use an overload of InvokeMember that takes
-;; ParameterModifier. Docs confusing as hell. See:
-;;
-;; http://groups.google.com/group/microsoft.public.dotnet.languages.csharp/browse_thread/thread/a1953aaee6bebe71/678a073a64043691?lnk=st&q=invokemember+ref+out&rnum=2&hl=en#678a073a64043691
-;;
-;; Some of the confusion may stem from COM interop versus native CLR
-;; stuff.
-;;
-;; Another problem that might arise: InvokeMember infers types from
-;; the arguments. What about an *out* argument for which there's no
-;; input object???? It could just be that InvokeMember is flawed and
-;; we need to use a two-step process (lookup/invoke).
-;;
-
-(defun make-args-array (args-list)
-  (let ((args-array (new "System.Object[]" (length args))))
+(defun list-to-clr-array (list &optional (base-type (get-system-type
+                                                     "System.Object")))
+  "Creates and returns a CLR array of base type BASE-TYPE \(a
+CONTAINER, type name string, or symbol representing a CLR type)
+and rank 1 with the elements from the Lisp list LIST. BASE-TYPE
+defaults to System.Object."
+  (setf base-type (type-arg-to-type-object base-type))
+  (let ((array (new (get-system-type "System.Array")
+                    base-type
+                    (length list))))
     (loop
-       for arg in args-list
+       for item in list
        for i from 0
        do
-         (setf (aref* args-array i) (if (typep arg 'clr-ref)
-                                        (error "Not ready yet.")
-                                        arg)))
-    args-array))
-
-(defun copy-ref-args (args-list args-array)
-  (loop
-     for arg in args-list
-     for i from 0
-     do
-       (when (typep arg 'clr-ref)
-         (funcall (setter-of arg) (unbox (aref* args-array i)))))
-  (values))
+         (setf (aref* array i) item))
+    array))
 
 (defun invoke-member (object member-name &rest args)
-  (let* ((args-array (list-to-rdnzl-array args))
-         (result
-          (rdnzl-handler-case
-           (if (symbolp object)
-               (generic-invoke-member (get object 'clr-type)
-                                      member-name
-                                      *static-member-binding-flags*
-                                      *default-binding-object*
-                                      *null-object*
-                                      args-array)
-              (generic-invoke-member (get-type object)
-                                     member-name
-                                     *instance-member-binding-flags*
-                                     *default-binding-object*
-                                     object
-                                     args-array))
-          ("System.Reflection.TargetInvocationException"
-           (err)
-           ;; Unwrap the inner exception; the caller isn't interested
-           ;; in the fact that the call occurred via reflection.
-           (signal 'rdnzl-error
-                   :exception
-                   (property err "InnerException"))))))
-        (if (container-p result)
-            (unbox (force-type result))
-            result)))
+  (let ((type (arg-to-type-object object)))
+    (if type
+        (apply #'invoke-static type member-name args)
+        (apply #'invoke-instance object member-name args))))
   
 (defun set-member (new-value object member-name &rest indexes)
-  (rdnzl-handler-case
-   (if (symbolp object)
-       ;; Note: Unlike in RDNZL, we have the type object
-       ;; already.
-       (generic-invoke-member (get object 'clr-type)
-                              member-name
-                              *static-set-prop-or-field-binding-flags*
-                              *default-binding-object*
-                              *null-object*
-                              ;; Sadly, new-value has to come after the indexes.
-                              (list-to-rdnzl-array (append indexes
-                                                           (list new-value))))
-       (generic-invoke-member (get-type object)
-                              member-name
-                              *instance-set-prop-or-field-binding-flags*
-                              *default-binding-object*
-                              object
-                              ;; Sadly, new-value has to come after the indexes.
-                              (list-to-rdnzl-array (append indexes
-                                                           (list new-value)))))
-   ("System.Reflection.TargetInvocationException"
-    (err)
-    ;; Unwrap the inner exception; the caller isn't interested
-    ;; in the fact that the call occurred via reflection.
-    (signal 'rdnzl-error
-            :exception
-            (property err "InnerException"))))
-  new-value)
+  (let ((type (arg-to-type-object object)))
+    (if type
+      (apply #'set-static new-value type member-name indexes)
+      (apply #'set-instance new-value object member-name indexes))))
 
 (defun get-namespace-package (namespace)
   "Given a CLR namespace name, return the package that represents
@@ -264,27 +141,19 @@ it. The symbol is interned in the CLR-SYMBOLS package."
       (bind-member-symbol symbol member-name))
     symbol))
 
-(defun get-type-name-from-symbol (sym)
-  (let* ((pkg             (symbol-package sym))
-         (pkg-name        (and pkg (package-name pkg)))
-         (namespace-name  (and (eql 4 (mismatch pkg-name "CLR!"))
-                               (subseq pkg-name 4))))
-    (unless namespace-name
-      (error "Symbol ~S does not designate a CLR type." sym))
-     (concatenate 'string namespace-name "." (symbol-name sym))))
-     
 (defun bind-type-symbol (type-symbol &optional type-object)
   "Given a symbol whose home package represents a namespace, and
 whose name is a CLR type name in that namespace, bind the symbol
 as a designator for that CLR type. Returns the symbol."
   (unless type-object
     (setf type-object
-          (get-type-object (get-type-name-from-symbol type-symbol))))
+          (find-type-from-namespace-qualified-name
+           (symbol-to-clr-type-name type-symbol))))
   (let (members)
-    (do-rdnzl-array (member-info (invoke type-object "GetMembers"))
-      (pushnew (get-member-symbol (property member-info "Name")) members))
+    (do-clr-array (member-info (invoke-member type-object "GetMembers"))
+      (pushnew (get-member-symbol (invoke-member member-info "Name")) members))
     (setf (get type-symbol 'clr-members) members))
-  (setf (get type-symbol 'clr-type) (force-type type-object))
+  (setf (get type-symbol 'clr-type) type-object)
   type-symbol)
  
 (defun get-type-symbol (type)
@@ -292,49 +161,21 @@ as a designator for that CLR type. Returns the symbol."
 type object. Returns a symbol to represent the type. The symbol
 is interned in a namespace package, and symbols for its members
 are imported into that package from CLR-SYMBOLS."
-  (let ((type-object (cond ((stringp type)
-                            (find-type-from-namespace-qualified-name type))
-                           ((container-p type) type)
-                           (t (error "Expected TYPE to be a CLR type object or qualified type name string.")))))
-    (multiple-value-bind (namespace type-name)
-        (split-type-name (property type-object "FullName"))
-      (let ((package     (get-namespace-package namespace)))
-        (multiple-value-bind (type-symbol status) (intern type-name package)
-          (unless (eq status :external)
-            (bind-type-symbol type-symbol type-object)
-            (export type-symbol package)
-            (import (get type-symbol 'clr-members) package)
-            (export (get type-symbol 'clr-members) package))
-          type-symbol)))))
-
-(defun get-type-object (type)
-  "Given the namespace-qualified name string of a CLR type,
-returns corresponding System.Type object if it can be found in
-the loaded assemblies of the current application domain. Given a
-symbol representing a CLR type, returns a corresponding
-System.Type object. Given a CLR object, returns a System.Type
-object representing that object's type. Signals an error in all
-other cases."
-  (cond ((stringp type) (or (find-type-from-namespace-qualified-name type)
-                            (error "~S does not name an accessible type.")))
-        ((symbolp type) (or (get type 'clr-type)
-                            (setf (get type 'clr-type)
-                                  (find-type-from-namespace-qualified-name
-                                   (get-type-name-from-symbol type)))))
-        ((container-p type) (force-type (get-type type)))
-        (t (error "Expected string, symbol, or CLR object for TYPE."))))
+  (cond ((stringp type) (clr-type-name-to-symbol type))
+        ((clr-object-p type) (clr-type-object-to-symbol type))
+        (t (error "Expected TYPE to be a CLR type object or qualified type name string."))))
 
 (defun bind-namespace (namespace)
   "Binds all type and member symbols of a namespace which can be
 found in the currently loaded assemblies of the current
 application domain.  Returns the namespace package."
   (let ((package (get-namespace-package namespace)))
-    (do-rdnzl-array (assembly (invoke (property "System.AppDomain"
-                                                "CurrentDomain")
-                                      "GetAssemblies"))1
-      (do-rdnzl-array (type-object (invoke assembly "GetTypes"))
-        (when (zerop (search namespace (property type-object "FullName")))
-          (get-type-symbol type-object) package)))
+    (do-clr-array (assembly (invoke-member (invoke-member "System.AppDomain"
+                                                          "CurrentDomain")
+                                           "GetAssemblies"))
+      (do-clr-array (type-object (invoke-member assembly "GetTypes"))
+        (when (zerop (search namespace (invoke-member type-object "FullName")))
+          (clr-type-object-to-symbol type-object) package)))
     package))
 
 (defmacro def-namespaces (&rest namespaces)
@@ -353,79 +194,34 @@ type. IMPORT-TYPES imports the symbol designating the CLR type to
 PACKAGE, which defaults to *PACKAGE*. It also imports symbols to
 represent all public members of the CLR type. Returns the symbol
 designating the CLR type."
-  (setf package (find-package *package*))
-  (when (stringp type)
-    (setf type (get-type-symbol type)))
-  (import type package)
-  (import (get type 'clr-members) package)
-  type)
+  (let ((type-symbol (clr-type-object-to-symbol
+                      (type-arg-to-type-object type))))
+    (import type-symbol package)
+    (import (get type-symbol 'clr-members) package)
+    type-symbol))
 
 (defun init-symbols ()
-  (flet ((find-and-cache-system-type (name)
-           (get-type-symbol (invoke "System.Type" "GetType" name))))
-    ;; Here are some primitive type objects that we need in order to
-    ;; bootstrap the type lookup code. They are the objects used by
-    ;; GET-TYPE-SYMBOL and its supporting functions to turn names into
-    ;; type objects..
-    (find-and-cache-system-type "System.Type")
-    (find-and-cache-system-type "System.AppDomain"))
-
-  ;; If there are other symbols defined, make sure that they're set to
-  ;; something. GET-CLR-SYMBOL will signal an error if a type cannot
-  ;; be unambiguously resolved. This is relevant if RDNZL is being
-  ;; re-initialized, e.g. in a saved image. As soon as this system is
-  ;; initialized, conflicts of referenced types will be detected.
+  ;; If there are type symbols defined, make sure that they're set to
+  ;; something. This is relevant when the system is being
+  ;; re-initialized e.g. when loading and initializing a saved
+  ;; image.
   (dolist (pkg *namespace-packages*)
     (do-external-symbols (sym pkg)
       (when (stringp (get sym 'clr-type))
         ;(format t "~&Initializing type symbol ~S." sym)
         (setf (get sym 'clr-type)
-              (find-type-from-namespace-qualified-name (get sym 'clr-type))))))
+              (find-type-from-namespace-qualified-name (get sym 'clr-type)))))))
 
-  ;; Initialize some local stuff referenced by closures we create.
-  (setf *null-object* (make-null-object "System.Object"))
-  (setf *default-binding-object*
-        (property "System.Type" "DefaultBinder"))
-  (setf *empty-object-array* (list-to-rdnzl-array nil "System.Object"))
-  (setf *static-member-binding-flags*
-        (or-enums (binding-flag "Static")
-                  (binding-flag "GetProperty")
-                  (binding-flag "GetField")
-                  (binding-flag "InvokeMethod")
-                  (binding-flag "Public")))
-  (setf *static-set-prop-or-field-binding-flags*
-        (or-enums (binding-flag "Static")
-                  (binding-flag "SetProperty")
-                  (binding-flag "SetField")
-                  (binding-flag "Public")))
-  (setf *instance-member-binding-flags*
-        (or-enums (binding-flag "Instance")
-                  (binding-flag "GetProperty")
-                  (binding-flag "GetField")
-                  (binding-flag "InvokeMethod")
-                  (binding-flag "Public")))
-  (setf *instance-set-prop-or-field-binding-flags*
-        (or-enums (binding-flag "Instance")
-                  (binding-flag "SetProperty")
-                  (binding-flag "SetField")
-                  (binding-flag "Public"))))
 
-(defun release-symbols ()
+(defun shutdown-symbols ()
   "Releases all CLR objects cached by the symbols subsystem of
 CL-CLR. Must be called when shutting down, e.g. to save an
 image."
-  (setf *instance-set-prop-or-field-binding-flags* nil)
-  (setf *instance-member-binding-flags* nil)
-  (setf *static-set-prop-or-field-binding-flags* nil)
-  (setf *static-member-binding-flags* nil)
-  (setf *empty-object-array* nil)
-  (setf *default-binding-object* nil)
-  (setf *null-object* nil)
   (dolist (pkg *namespace-packages*)
     (do-external-symbols (sym pkg)
       (let ((type-object (get sym 'clr-type)))
-        (when (container-p type-object)
+        (when (clr-object-p type-object)
           ;(format t "~&Shutting down type symbol ~S." sym)
           (setf (get sym 'clr-type)
-                (elide-assembly (property type-object "FullName"))))))))
+                (elide-assembly (invoke-instance type-object "FullName"))))))))
 

@@ -5,8 +5,9 @@
 (in-package :cl-clr)
 
 (defun %load-assembly (&rest args)
-  (force-type (apply #'invoke
-                     (property "System.AppDomain" "CurrentDomain")
+  (force-type (apply #'invoke-member
+                     (invoke-static (get-system-type "System.AppDomain")
+                                    "CurrentDomain")
                      "Load"
                      args)))
 (defmacro load-assembly (&rest args)
@@ -21,8 +22,8 @@ in searches for types by CL-CLR. Returns the assembly."
 current application domain, with VAR bound to the corresponding
 System.Reflection.Assembly object. Returns nothing. (Currently,
 this iterates through all assemblies in the application domain.)"
-  `(do-rdnzl-array
-       (,var (invoke (invoke "System.AppDomain" "CurrentDomain")
-                     "GetAssemblies "))
+  `(do-clr-array
+       (,var (invoke-member (invoke-member "System.AppDomain" "CurrentDomain")
+                            "GetAssemblies "))
      ,@body))
 

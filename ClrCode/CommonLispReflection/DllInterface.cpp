@@ -114,7 +114,10 @@ clr_handle get_default_app_domain()
 {
     return GetHandleFromObject(AppDomain::CurrentDomain);
 }
-
+clr_handle get_system_type(const char* name)
+{
+    return GetHandleFromObject(Type::GetType(gcnew String(name)));
+}
 clr_handle wrap_varargs_array(clr_handle args)
 {
     Array^ arry = safe_cast<Array^>(GetObjectFromHandle(args));
@@ -125,7 +128,6 @@ clr_handle make_object_array(int n)
 {
     return GetHandleFromObject(gcnew array<Object^>(n));
 }
-
 clr_handle get_array_element(clr_handle arry, int index)
 {
     return GetHandleFromObject(safe_cast<Array^>(GetObjectFromHandle(arry))->GetValue(index));
@@ -133,6 +135,20 @@ clr_handle get_array_element(clr_handle arry, int index)
 void set_array_element(clr_handle arry, int index, clr_handle obj)
 {
     safe_cast<Array^>(GetObjectFromHandle(arry))->SetValue(GetObjectFromHandle(obj), index);
+}
+int array_length(clr_handle arry)
+{
+    return safe_cast<Array^>(GetObjectFromHandle(arry))->Length;
+}
+
+int binding_flag(const char* name)
+{
+    BindingFlags flags = safe_cast<BindingFlags>(BindingFlags::typeid->InvokeMember(gcnew String(name),
+                                                                                    BindingFlags::Static
+                                                                                    | BindingFlags::GetField 
+                                                                                    | BindingFlags::Public,
+                                                                                    nullptr, nullptr, nullptr));
+    return safe_cast<Int32>(Convert::ChangeType(flags, Int32::typeid));
 }
 // The Lisp system calls this to free an object for garbage collection.
  void release_object_handle(clr_handle handle)
@@ -149,98 +165,31 @@ int is_simple_type(clr_handle obj, const char* type_name)
     return GetObjectFromHandle(obj)->GetType()->FullName == gcnew String(type_name);
 }
 
-clr_handle invoke_member(clr_handle object_handle,
-                         clr_handle type_handle,
-                         const char* name,
+clr_handle invoke_member(clr_handle type_handle,
+                         const char* name_str,
+                         int flags,
+                         clr_handle binder_handle,
+                         clr_handle object_handle,
                          clr_handle args_handle)
 {
-    array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(args_handle));
     try
     {
-        BindingFlags flags = BindingFlags::Public | BindingFlags::FlattenHierarchy;
+        // Let's unwrap all our presents:
         Object^ object = GetObjectFromHandle(object_handle);
-        Type^ type = safe_cast<Type^>(GetObjectFromHandle(type_handle));
-        if (object)
+        Object^ type_as_object = GetObjectFromHandle(type_handle);
+        Type^ type   = type_as_object ? safe_cast<Type^>(type_as_object) : object->GetType();
+        String^ name  = gcnew String(name_str);
+        Object^ args_as_object = GetObjectFromHandle(args_handle);
+        array<Object^>^ args = args_as_object ? safe_cast<array<Object^>^>(args_as_object) : nullptr;
+
+        BindingFlags binding_flags = BindingFlags(flags);
+
+        Object^ result = type->InvokeMember(name, binding_flags, gcnew LispBinder(true), object, args);
+
+        if (result)
         {
-            flags = flags | BindingFlags::Instance;
-            if (!type)
-                type = object->GetType();
-        }
-        else
-        {
-            flags = flags | BindingFlags::Static;
-        }
-        assert(type);
-
-        LispBinder^ binder = gcnew LispBinder(false);
-        String^ strname = gcnew String(name);
-        MemberFilter^ predicate = gcnew MemberFilter(gcnew InvocableMemberPredicate(binder, strname, args),
-                                                     &InvocableMemberPredicate::IsInvocable);
-        // In this search, note that we're not interested in properties,
-        // but rather in their getters. The predicate object will pick
-        // those out for us.
-        array<MemberInfo^>^ candidates
-            = type->FindMembers(MemberTypes::Method | MemberTypes::Field,
-                                flags,
-                                predicate,
-                                nullptr);
-        if (!candidates || candidates->Length == 0)
-            throw gcnew MissingMethodException(strname);
-        // According to CLR rules, a name can't be overloaded by kind.
-        // It's easy to create a class that violates this in C#, using
-        // the new keyword. As it happens, we will handle this OK unless
-        // a method or parameter taking no arguments conflicts with a
-        // similar parameter, method, or field of the same name.
-        MemberTypes kind = candidates[0]->MemberType;
-        for each (MemberInfo^ member in candidates)
-        {
-            if (member->MemberType != kind)
-                throw gcnew AmbiguousMatchException(String::Format("Conflicting kinds of members with name {0}.", strname));
-        }
-
-        Object^ result = nullptr;
-        switch (kind)
-        {
-        case MemberTypes::Method:
-            {
-                Object^ members = binder->SelectMethods(candidates,
-                                                        false, // Don't check type conformance, we already did.
-                                                        LispBinder::ParamsFromMethodBase,
-                                                        args, LispBinder::TypeFromObject);
-
-                if (MethodInfo^ method = dynamic_cast<MethodInfo^>(members))
-                {
-                    array<ParameterInfo^>^ params = method->GetParameters();
-                    array<Object^>^ real_args = binder->BindArgs(params, args);
-
-                    result = method->Invoke(object, real_args);
-
-                    if (real_args != args)
-                        binder->ReorderArgumentArray(real_args, args);
-
-                    if (method->ReturnType == System::Void::typeid)
-                        return VoidReturn::InstanceHandle;
-                }
-                else if (array<MethodBase^>^ methods = dynamic_cast<array<MethodBase^>^>(members))
-                {
-                    throw gcnew AmbiguousMatchException(String::Format("Multiple matches for call to {0}.", strname));
-                }
-                else
-                {
-                    throw gcnew MissingMethodException(String::Format("No matching method named {0} found.", strname));
-                }
-            }
-            break;
-        case MemberTypes::Field:
-            {
-                if (candidates->Length > 1)
-                    throw gcnew AmbiguousMatchException(String::Format("Multiple matches for referend to field {0}.", strname));
-                if (FieldInfo^ field = dynamic_cast<FieldInfo^>(candidates[0]))
-                    result = field->GetValue(object);
-            }
-            break;
-        default:
-            throw gcnew Exception("Internal error: bad member type selected.");
+            if (result->GetType() == Void::typeid)
+                return VoidReturn::InstanceHandle;
         }
         return GetHandleFromObject(result);
     }
@@ -252,9 +201,11 @@ clr_handle invoke_member(clr_handle object_handle,
     {
         return GetHandleFromObject(gcnew ExceptionReturn(e));
     }
-    
 }
-
+clr_handle make_lisp_binder(int allow_double_narrowing)
+{
+    return GetHandleFromObject(gcnew LispBinder(allow_double_narrowing != 0));
+}
 
 //////////////////////////////////////////////////////////////////////////////
 // Boxing functions

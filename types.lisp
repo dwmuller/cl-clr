@@ -5,8 +5,10 @@
 ;;; Functions having to do with the manipulation of type names and
 ;;; looking up CLR type objects.
 ;;;
-;;; Note: Don't use DO-ASSEMBLIES in here. These utilities are more
-;;; primitive than those in assemblies.lisp.
+;;; This file is loaded early, because type lookup is used by
+;;; much of the rest of CL-CLR. Thus it avoids using higher-level
+;;; functionality, using e.g. the INVOKE-* functions which don't
+;;; understand symbols-as-types, and avoiding the use of DO-ASSEMBLIES.
 ;;;
 
 (in-package :cl-clr)
@@ -89,30 +91,30 @@ type is not found, or if it is ambiguous.
 
 All CLR types referenced in this function must be preloaded by
 INIT-TYPE-OBJECTS."
-  (let ((result nil)
-        (app-domain (property "System.AppDomain" "CurrentDomain")))
-    (do-rdnzl-array
-        (assembly (invoke app-domain "GetAssemblies"))
-      (let ((type (invoke assembly "GetType" type-name)))
-        (when (and type (or (property type "IsPublic")
-                            (property type "IsNestedPublic")))
+  (let ((result nil))
+    (do-clr-array
+        (assembly (invoke-instance *default-app-domain* "GetAssemblies"))
+      (let ((type (invoke-instance assembly "GetType" type-name)))
+        (when (and type (or (invoke-instance type "IsPublic")
+                            (invoke-instance type "IsNestedPublic")))
           (typecase result
             (null (setf result type))
             (list (push type result))
             (t (setf result (list type result)))))))
-    (force-type result)
     (typecase result
       (null
        (error "Could not find an accessible public type named ~S.~%Searched these assemblies:~%~{  ~A~%~}"
               type-name
-              (map 'list #'(lambda (a) (property a "FullName"))
-                   (rdnzl-array-to-list (invoke app-domain "GetAssemblies")))))
+              (map 'list #'(lambda (a) (invoke-instance a "FullName"))
+                   (clr-array-to-list (invoke-instance *default-app-domain*
+                                                       "GetAssemblies")))))
       (list
        (error "Type ~S is multiply defined in these assemblies:~%~{  ~A~%~}"
               type-name
               (map 'list
                    (lambda (type)
-                     (property (property type "Assembly") "FullName"))
+                     (invoke-instance (invoke-instance type "Assembly")
+                                      "FullName"))
                    result)))
       (t result))))
 
@@ -121,22 +123,21 @@ INIT-TYPE-OBJECTS."
 simple-name. It searches all assemblies loaded in the current
 application domain, and all given namespaces. Signals an error if
 the type is not found, or if it is ambiguous."
-  (let ((result nil)
-        (app-domain (property "System.AppDomain" "CurrentDomain")))
+  (let ((result nil))
     (loop
        for namespace in (cons "" namespaces)
        for qualified-name = (concatenate 'string namespace "." simple-name)
-       do (do-rdnzl-array
-              (assembly (invoke app-domain "GetAssemblies"))
-            (let ((type (invoke assembly "GetType" qualified-name)))
+       do (do-clr-array
+              (assembly (invoke-instance *default-app-domain*
+                                       "GetAssemblies"))
+            (let ((type (invoke-instance assembly "GetType" qualified-name)))
               (when (and type
-                         (or (property type "IsPublic")
-                             (property type "IsNestedPublic")))
+                         (or (invoke-instance type "IsPublic")
+                             (invoke-instance type "IsNestedPublic")))
                 (typecase result
                   (null (setf result type))
                   (t (push type result))
                   (symbol (setf result (list type result))))))))
-    (force-type result)
     (typecase result
       (null
        (error "Could not find an accessible public type named ~S.~%Searched these namespaces:~%~{  ~A~%~}"
@@ -146,7 +147,7 @@ the type is not found, or if it is ambiguous."
        (error "Type name ~S is ambiguous. Could refer to any of:~%~{  ~A~%~}"
               simple-name
               (map 'list
-                   (lambda (type) (property type "FullName"))
+                   (lambda (type) (invoke-instance type "FullName"))
                    result)))
       (t result))))
 
@@ -159,12 +160,12 @@ current application domain. If the type-name is not qualified at
 all, then the type is returned if it is defined exactly once in
 the global namespace or the specified namespaces.  An error
 is signaled if the type-name is ambiguous or undefined."
-  (force-type (let ((assembly-part (find-assembly-separator type-name)))
-                (cond
-                  (assembly-part
-                   (invoke "System.Type" "GetType" type-name))
-                  ((is-namespace-qualified-type-name type-name)
-                   (find-type-from-namespace-qualified-name type-name))
-                  (t
-                   (find-type-from-simple-name type-name namespaces))))))
+  (let ((assembly-part (find-assembly-separator type-name)))
+    (cond
+      (assembly-part
+       (invoke-static *system-type-type* "GetType" type-name))
+      ((is-namespace-qualified-type-name type-name)
+       (find-type-from-namespace-qualified-name type-name))
+      (t
+       (find-type-from-simple-name type-name namespaces)))))
 

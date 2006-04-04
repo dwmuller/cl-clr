@@ -10,7 +10,6 @@
 ;;;
 
 (in-package :cl-clr)
-(use-package :cffi)
 
 (defctype clr-handle :pointer)
 
@@ -20,9 +19,11 @@
 (load-foreign-library 'clr-reflection)
 
 (defcfun ("invoke_member" %invoke-member) clr-handle
-  (object-handle clr-handle)
   (type-handle clr-handle)
   (name :string)
+  (binding-flags :int)
+  (binder-handle clr-handle)
+  (object-handle clr-handle)
   (args-handle clr-handle))
 
 (defcfun ("returned_exception" %returned-exception) clr-handle
@@ -32,6 +33,12 @@
   (returned-value clr-handle))
 
 (defcfun ("get_default_app_domain" %get-default-app-domain) clr-handle)
+
+(defcfun ("get_system_type" %get-system-type) clr-handle
+  (name :string))
+
+(defcfun ("make_lisp_binder" %make-lisp-binder) clr-handle
+  (allow-double-narrowing :boolean))
 
 (defcfun ("make_object_array" %make-object-array) clr-handle
   (n :int))
@@ -45,6 +52,9 @@
   (index :int)
   (obj clr-handle))
 
+(defcfun ("array_length" %array-length) :int
+  (array clr-handle))
+
 (defcfun ("release_object_handle" %release-object-handle) :void
   (handle clr-handle))
 
@@ -52,51 +62,14 @@
     (object clr-handle)
     (type   :string))
 
-(defmacro %with-clr-handle ((var init) &body body)
-  `(let ((,var ,init))
-     (unwind-protect
-          (progn ,@body)
-       (when ,var (%release-object-handle ,var)))))
+(defcfun binding-flag :int
+  (name :string))
 
-(defmacro %with-clr-handles* ((var-forms) &body body)
-  (if var-forms
-      `(%with-clr-handle ,(car var-forms)
-         (%with-clr-handles ,(cdr var-forms)
-           ,@body))
-      `(progn ,@body)))
+(defun binding-flags (&rest name)
+  (reduce #'(lambda (value name)
+              (logior value (binding-flag name)))
+          name :initial-value 0))
 
-(defun my-invoke-member (object type name &rest args)
-  (let* ((args-array (%make-object-array (length args)))
-         temp-handles)
-    (unwind-protect
-         (progn
-           (loop
-              for arg in args
-              for i upfrom 0  
-              do (cond
-                   ((typep arg 'clr-object)
-                    (%set-array-element args-array i arg))
-                   (t (push (%box arg) temp-handles)
-                     (%set-array-element args-array i (car temp-handles)))))
-           ;;; Be careful here. One of the values that can be returned
-           ;;; is a singleton handle to denote the void return. This
-           ;;; value must not be boxed, otherwise we'll release it,
-           ;;; invalidating the handle.
-           (let* ((result (%invoke-member (%box object)
-                                          (%box type)
-                                          name
-                                          args-array))
-                  (e (%unbox (%returned-exception result))))
-             (when e
-               (error "Exception thrown."))
-             (when (%is-void-return result)
-               (return-from my-invoke-member (values)))
-             (%unbox result)))
-      (%release-object-handle args-array)
-      (loop
-           for handle in temp-handles
-           do (%release-object-handle handle)))))
-        
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Memory management
@@ -108,9 +81,37 @@
        (%release-object-handle (handle-of obj))
        (hcl:flag-not-special-free-action obj))))
 
+;;; TODO: need vendor implementations of flag-for-handle-release
+
 #+lispworks
 (defun flag-for-handle-release (obj)
   (hcl:flag-special-free-action obj))
+
+(defmacro %with-clr-handle ((var init) &body body)
+  (assert (symbolp var))
+  `(let ((,var ,init))
+     (unwind-protect
+          (progn ,@body)
+       (when ,var (%release-object-handle ,var)))))
+
+(defmacro %with-clr-handles* ((&rest var-forms) &body body)
+  (if var-forms
+      `(%with-clr-handle ,(car var-forms)
+         (%with-clr-handles* ,(cdr var-forms)
+           ,@body))
+      `(progn ,@body)))
+
+(defun %make-args-array (args length)
+  (let ((array (%make-object-array length)))
+    (loop
+       for arg in args
+       for i upfrom 0  
+       do (cond
+            ((typep arg 'clr-object)
+             (%set-array-element array i arg))
+          (t (%with-clr-handle (handle (%box arg))
+               (%set-array-element array i handle)))))
+    array))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -161,6 +162,9 @@
     (flag-for-handle-release result)
     result))
 
+(defun clr-object-p (obj)
+  (typep obj 'clr-object))
+
 ;;; Note: We don't define a corresponding translate-from-foreign,
 ;;; because we don't always want to automatically wrap a handle
 ;;; in a class.
@@ -202,7 +206,7 @@
 
 (defun %unbox (handle)
   (cond
-    ((null-pointer-p handle) nil)
+    ((and (pointerp handle) (null-pointer-p handle)) nil)
     ((%is-simple-type handle "System.Byte")   (%unbox-byte  handle))
     ((%is-simple-type handle "System.Int16")  (%unbox-int16 handle))
     ((%is-simple-type handle "System.Int32")  (%unbox-int32 handle))
@@ -216,3 +220,102 @@
     (t (%make-clr-object handle))))
      
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; The root of most invocation evils:
+;;;
+
+(defun generic-invoke-member (type member-name flags object args
+                              &key (binder *lisp-binder*))
+  "A generic member invocation function based on
+System.Type.InvokeMember. Works with the CommonLispReflection DLL
+to manage the translation of void return types and thrown
+exceptions. TYPE, OBJECT, and BINDER can be NIL and will be
+boxed.  TYPE and OBJECT must not both be NIL. ARGS is expected to
+be an unboxed handle of a CLR array, or NIL."
+  ;; Be careful here. One of the values that can be returned by
+  ;; %invoke-member is a singleton handle to denote the void
+  ;; return. This value must not be boxed, otherwise we'll release it,
+  ;; invalidating the handle. Besides, it would be a waste of
+  ;; resources. Actually, similar comments apply to an exception
+  ;; return handle -- no point in wrapping it as a CLR-OBJECT, since
+  ;; we're only interested in the exception that it contains.
+  (let* ((result (%invoke-member (%box type)
+                                 member-name
+                                 flags
+                                 (%box binder)
+                                 (%box object)
+                                 (or args (make-pointer 0))))
+         (e (%unbox (%returned-exception result))))
+    (when e
+      (%release-object-handle result)
+      (error "Exception thrown."))
+    (when (%is-void-return result)
+      (return-from generic-invoke-member (values)))
+    (%unbox result)))
+
+  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Bootstrapping stuff for other modules.
+;;;
+
+(defun get-system-type (name)
+  (%make-clr-object (%get-system-type name)))
+
+(defmacro do-clr-array ((var array-form &optional result) &body body)
+  "ARRAY-FORM should be a form which evaluates to a CLR object of
+type ARRAY with a rank of one.  BODY will be evaluated with VAR
+bound to each element of this array in turn.  Finally, the result
+of evaluating the form RESULT is returned."
+  (let ((array (gensym)))
+    `(let ((,array ,array-form))
+       (loop
+          for i from 0 below (%array-length ,array)
+          for ,var = (%unbox (%get-array-element ,array i))
+          do (progn ,@body)
+          finally return ,result))))
+
+(defun clr-array-to-list (array)
+  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
+same elements."
+  (loop
+     for i from 0 below (%array-length array)
+     collecting (%unbox (%get-array-element array i))))
+
+(defun aref* (array index)
+  (%unbox (%get-array-element array index)))
+
+(defun (setf aref*) (array index value)
+  (%unbox (%set-array-element array index (%box value))))
+
+(defvar *default-app-domain* nil
+  "The default application domain object. This is the root of all
+type lookups.")
+  
+(defvar *lisp-binder* nil
+  "The LispBinder object, a CLR object derived from System.Binder
+that determines how members are selected.")
+
+(defvar *system-type-type* nil
+  "The type object representing System.Type. Used to bootstrap
+retrieval of simple system types.")
+
+(defvar *system-convert-type* nil
+  "The type object for System.Convert.")
+
+(defun init-ffi ()
+  (setf
+   *default-app-domain*  (%make-clr-object (%get-default-app-domain))
+   *lisp-binder*         (%make-clr-object (%make-lisp-binder
+                                            #+(and :lispworks :win32) t
+                                            #-(and :lispworks :win32) nil))
+   *system-convert-type* (get-system-type "System.Convert"))
+  (values))
+
+(defun shutdown-ffi ()
+  (setf
+   *system-convert-type* nil
+   *default-app-domain*  nil
+   *lisp-binder*         nil)
+  (values))
