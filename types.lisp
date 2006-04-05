@@ -83,7 +83,7 @@ returns T, otherwise NIL."
      if (and pos (or (zerop pos) (not (eql (aref type-name (1- pos)) #\\))))
      return t))
 
-(defun find-type-from-namespace-qualified-name (type-name)
+(defun find-type-from-full-name (type-name)
   "Returns a System.Type object for the type in the given
 namespace with the given simple-name. It searches all assemblies
 loaded in the current application domain. Signals an error if the
@@ -165,7 +165,7 @@ is signaled if the type-name is ambiguous or undefined."
       (assembly-part
        (invoke-static *system-type-type* "GetType" type-name))
       ((is-namespace-qualified-type-name type-name)
-       (find-type-from-namespace-qualified-name type-name))
+       (find-type-from-full-name type-name))
       (t
        (find-type-from-simple-name type-name namespaces)))))
 

@@ -38,10 +38,10 @@
 (in-package :cl-clr)
 
 (defclass reader-context ()
-  ((previous-readtable :accessor previous-readtable :initform *readtable*)
-   (referenced-types   :accessor types              :initform nil)
-   (referenced-members :accessor members            :initform nil)
-   (used-namespaces    :accessor namespaces         :initform nil)))
+  ((previous-readtable :accessor precedent-of  :initform *readtable*)
+   (referenced-types   :accessor types-of      :initform nil)
+   (referenced-members :accessor members-of    :initform nil)
+   (used-namespaces    :accessor namespaces-of :initform nil)))
 
 (defvar *contexts* nil
   "A stack which holds contexts for the CL-CLR reader. The
@@ -55,7 +55,7 @@ topmost context is the current one.")
 
 (defun pop-context ()
   (cond
-    (*contexts* (setf *readtable* (previous-readtable (car *contexts*)))
+    (*contexts* (setf *readtable* (precedent-of (car *contexts*)))
                 (pop *contexts*))
     (t (setf *readtable* (copy-readtable nil))))
   (values))
@@ -71,7 +71,7 @@ topmost context is the current one.")
 (defun lookup-type-symbol (type-name)
   (clr-type-object-to-symbol
    (find-type-from-name type-name
-                        (namespaces (current-context)))))
+                        (namespaces-of (current-context)))))
 
 (defun read-clr-name (stream)
   (loop
@@ -100,13 +100,13 @@ topmost context is the current one.")
 (defun read-clr-member (stream &optional char)
   (declare (ignorable char))
   (let ((symbol (get-member-symbol (read-clr-name stream))))
-    (pushnew symbol (members (current-context)))
+    (pushnew symbol (members-of (current-context)))
     symbol))
 
 (defun read-clr-type (stream &optional char)
   (declare (ignorable char))
   (let ((symbol (lookup-type-symbol (read-clr-name stream))))
-    (pushnew symbol (types (current-context)))
+    (pushnew symbol (types-of (current-context)))
     symbol))
 
 (defun read-clr-token (stream &optional char)
@@ -116,30 +116,48 @@ topmost context is the current one.")
         (read-clr-member stream (read-char stream t nil t))
         (read-clr-type stream char))))
 
-(defun %enable-clr-syntax (&optional (macro-char #\?))
-  "Internal function used to enable reader syntax and push a new
-context for it. MACRO-CHAR is the character used to prefix CLR
-names, and defaults to the question mark."
-  ;; Note that the settable macro-char feature isn't accessible right
-  ;; now.
-  (setf *readtable* (copy-readtable))
-  (set-macro-character macro-char #'read-clr-token t)
-  (values))
-
 ;----------------------------------------------------------------------------
 
-(defmacro use-namespaces (&rest namespaces)
-  "Enables the CL-CLR reader syntax, and sets the list of
-namespaces to be searched by the reader to resolve unqualified
-type names. If the reader syntax was previously enabled, the
-previous list is saved and restored after a call to
-BIND-REFERENCED-TYPES. A call to USE-NAMESPACES should usually
-appear at the top of a file. The file should end with a call to
-BIND-REFERENCED-TYPES."
+(defmacro enable-clr-syntax (&rest namespaces)
+  "Enable reader syntax and push a new context for it,
+initializing the list of namespace to NAMESPACES. (See
+USE-NAMESPACES.) If the reader syntax was previously enabled, the
+previous list is saved, and is restored after a call to
+BIND-CLR-SYMBOLS. A call to USE-NAMESPACES should usually appear
+at the top of a file. The file should end with a call to
+BIND-CLR-SYMBOLS."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (setf *readtable* (copy-readtable))
+     (set-macro-character #\? #'read-clr-token t)
      (push-context)
-     (setf (namespaces (current-context)) ',namespaces)
-     (%enable-clr-syntax)))
+     (use-namespaces ,@namespaces)
+     (values)))
+
+(defmacro use-namespace (namespace)
+  "Adds NAMESPACE, which is a namespace name string, to the list
+of namespaces to be searched by the reader to resolve unqualified
+type names."
+  (let ((ns (gensym)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (let ((,ns ,namespace))
+         (check-type ,ns string)
+         ;; Make sure that the namespace package exists. This is
+         ;; especially important when loading a compiled file that uses
+         ;; USE-NAMESPACES.
+         (get-namespace-package ,ns)
+         (push ,ns (namespaces-of (current-context)))
+         (values)))))
+
+(defmacro use-namespaces (&rest namespaces)
+  "Adds NAMESPACES, which are namespace name strings, to the list
+of namespaces to be searched by the reader to resolve unqualified
+type names."
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (loop
+        for namespace in ',namespaces
+        do
+          (use-namespace namespace))
+     (values)))
 
 (defmacro bind-clr-symbols (&optional dump)
   "Disables the reader syntax, and discards the list of
@@ -150,14 +168,15 @@ the reader. This should only be called after USE-NAMESPACE, and
 usually as the last top-level form in a file."
   `(progn
      (eval-when (:load-toplevel :execute)
-       (map nil #'bind-type-symbol ',(types (current-context)))
-       (map nil #'bind-member-symbol ',(members (current-context)))
+       (map nil #'bind-type-symbol ',(types-of (current-context)))
+       (map nil #'bind-member-symbol ',(members-of (current-context)))
      (eval-when (:compile-toplevel :execute)
        ,@(when dump
               `((format t "~&The following CLR types were referenced:~%~{  ~A~%~}"
                         (map 'list #'symbol-to-clr-type-name
-                           ',(types (current-context))))
+                           ',(types-of (current-context))))
                 (format t "~&The following CLR members were referenced:~%~{  ~A~%~}"
                         (map 'list #'symbol-name
-                             ',(members (current-context))))))
-       (pop-context)))))
+                             ',(members-of (current-context))))))
+       (pop-context)))
+     (values)))

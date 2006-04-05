@@ -5,6 +5,7 @@
 
 (in-package :cl-clr)
 
+(enable-clr-syntax)
 (use-namespaces "System"
                 "System.Reflection")
 
@@ -12,9 +13,9 @@
   (let ((members-info
          (?.GetMember type
                       member-name
-                      (binding-flag "Static")
-                      (binding-flag   "Public")
-                      (binding-flag "FlattenHierarchy"))))
+                      (binding-flags "Static"
+                                     "Public"
+                                     "FlattenHierarchy"))))
     (do-clr-array (member-info members-info)
       (format t "~&~S: ~A ~A "
               (?.Name member-info)

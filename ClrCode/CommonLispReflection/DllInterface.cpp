@@ -79,6 +79,11 @@ public:
     {
     }
 };
+clr_handle MakeExceptionReturnHandle(Exception^ e)
+{
+    return GetHandleFromObject(gcnew ExceptionReturn(e));
+}
+
 ref class VoidReturn
 {
     VoidReturn () {}
@@ -96,6 +101,31 @@ public:
 //////////////////////////////////////////////////////////////////////////////
 // Exported entry points
 
+clr_handle make_lisp_binder(int allow_double_narrowing)
+{
+    try
+    {
+        return GetHandleFromObject(gcnew LispBinder(allow_double_narrowing != 0));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+
+clr_handle wrap_varargs_array(clr_handle args)
+{
+    try
+    {
+        Array^ arry = safe_cast<Array^>(GetObjectFromHandle(args));
+        return GetHandleFromObject(LispBinder::VarArgsBase::WrapVarArgs(arry));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+
 clr_handle returned_exception(clr_handle e_handle)
 {
     ExceptionReturn^ e = dynamic_cast<ExceptionReturn^>(GetObjectFromHandle(e_handle));
@@ -109,46 +139,62 @@ int is_void_return(clr_handle v_handle)
     return v_handle == VoidReturn::InstanceHandle;
 }
 
-// Everything starts from an application domain object:
-clr_handle get_default_app_domain()
-{
-    return GetHandleFromObject(AppDomain::CurrentDomain);
-}
 clr_handle get_system_type(const char* name)
 {
-    return GetHandleFromObject(Type::GetType(gcnew String(name)));
+    try
+    {
+        return GetHandleFromObject(Type::GetType(gcnew String(name)));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
 }
-clr_handle wrap_varargs_array(clr_handle args)
-{
-    Array^ arry = safe_cast<Array^>(GetObjectFromHandle(args));
-    return GetHandleFromObject(LispBinder::VarArgsBase::WrapVarArgs(arry));
-}
-
 clr_handle make_object_array(int n)
 {
-    return GetHandleFromObject(gcnew array<Object^>(n));
+    try
+    {
+        return GetHandleFromObject(gcnew array<Object^>(n));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
 }
 clr_handle get_array_element(clr_handle arry, int index)
 {
-    return GetHandleFromObject(safe_cast<Array^>(GetObjectFromHandle(arry))->GetValue(index));
+    try
+    {
+        return GetHandleFromObject(safe_cast<Array^>(GetObjectFromHandle(arry))->GetValue(index));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
 }
-void set_array_element(clr_handle arry, int index, clr_handle obj)
+clr_handle set_array_element(clr_handle arry, int index, clr_handle obj)
 {
-    safe_cast<Array^>(GetObjectFromHandle(arry))->SetValue(GetObjectFromHandle(obj), index);
-}
-int array_length(clr_handle arry)
-{
-    return safe_cast<Array^>(GetObjectFromHandle(arry))->Length;
+    try
+    {
+        safe_cast<Array^>(GetObjectFromHandle(arry))->SetValue(GetObjectFromHandle(obj), index);
+        return 0;
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
 }
 
-int binding_flag(const char* name)
+clr_handle binding_flag(const char* name)
 {
-    BindingFlags flags = safe_cast<BindingFlags>(BindingFlags::typeid->InvokeMember(gcnew String(name),
-                                                                                    BindingFlags::Static
-                                                                                    | BindingFlags::GetField 
-                                                                                    | BindingFlags::Public,
-                                                                                    nullptr, nullptr, nullptr));
-    return safe_cast<Int32>(Convert::ChangeType(flags, Int32::typeid));
+    try
+    {
+        return GetHandleFromObject(safe_cast<BindingFlags^>(Enum::Parse(BindingFlags::typeid, gcnew String(name))));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
 }
 // The Lisp system calls this to free an object for garbage collection.
  void release_object_handle(clr_handle handle)
@@ -160,9 +206,28 @@ int binding_flag(const char* name)
         ((GCHandle)IntPtr(handle)).Free();
 }
 
-int is_simple_type(clr_handle obj, const char* type_name)
+int type_type_code(const char* type_name)
 {
-    return GetObjectFromHandle(obj)->GetType()->FullName == gcnew String(type_name);
+    try
+    {
+        return safe_cast<Int32>(Convert::ChangeType(Enum::Parse(TypeCode::typeid, gcnew String(type_name)), Int32::typeid));
+    }
+    catch (Exception^)
+    {
+        return -1;
+    }
+}
+int object_type_code(clr_handle object_handle)
+{
+    try
+    {
+        Object^ object = GetObjectFromHandle(object_handle);
+        return safe_cast<Int32>(Convert::ChangeType(Type::GetTypeCode(object->GetType()), Int32::typeid));
+    }
+    catch (Exception^)
+    {
+        return -1;
+    }
 }
 
 clr_handle invoke_member(clr_handle type_handle,
@@ -177,6 +242,9 @@ clr_handle invoke_member(clr_handle type_handle,
         // Let's unwrap all our presents:
         Object^ object = GetObjectFromHandle(object_handle);
         Object^ type_as_object = GetObjectFromHandle(type_handle);
+        if (object == nullptr && type_as_object == nullptr)
+            throw gcnew Exception("invoke_member() called with neither a type nor an object.");
+        Binder^ binder = safe_cast<Binder^>(GetObjectFromHandle(binder_handle));
         Type^ type   = type_as_object ? safe_cast<Type^>(type_as_object) : object->GetType();
         String^ name  = gcnew String(name_str);
         Object^ args_as_object = GetObjectFromHandle(args_handle);
@@ -184,7 +252,7 @@ clr_handle invoke_member(clr_handle type_handle,
 
         BindingFlags binding_flags = BindingFlags(flags);
 
-        Object^ result = type->InvokeMember(name, binding_flags, gcnew LispBinder(true), object, args);
+        Object^ result = type->InvokeMember(name, binding_flags, binder, object, args);
 
         if (result)
         {
@@ -195,18 +263,13 @@ clr_handle invoke_member(clr_handle type_handle,
     }
     catch (TargetInvocationException^ e)
     {
-        return GetHandleFromObject(gcnew ExceptionReturn(e->GetBaseException()));
+        return MakeExceptionReturnHandle(e->GetBaseException());
     }
     catch (Exception^ e)
     {
-        return GetHandleFromObject(gcnew ExceptionReturn(e));
+        return MakeExceptionReturnHandle(e);
     }
 }
-clr_handle make_lisp_binder(int allow_double_narrowing)
-{
-    return GetHandleFromObject(gcnew LispBinder(allow_double_narrowing != 0));
-}
-
 //////////////////////////////////////////////////////////////////////////////
 // Boxing functions
 

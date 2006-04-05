@@ -32,7 +32,7 @@
                                      "invoke"))
                  (:file "init"
                         :depends-on ("packages"
-                                     "ffi"
+                                     "invoke"
                                      "symbols"))
                  (:file "assemblies"
                         :depends-on ("packages"))
@@ -40,13 +40,15 @@
                         :depends-on ("packages"
                                      "symbols"
                                      "types"))
-                 (:file "util"
-                        :depends-on ("packages"
-                                     "reader"))
                  (:file "enums"
                         :depends-on ("packages"
-                                     "ffi"
-                                     "invoke"))
-                 (:system "rdnzl")
+                                     "invoke"
+                                     "symbols"))
+                 ;; Util depends on init because it
+                 ;; runs functions in reader.
+                 (:file "util"
+                        :depends-on ("packages"
+                                     "reader"
+                                     "init"))
                  (:system "cffi"))
-    :depends-on ("rdnzl" "cffi"))
+    :depends-on ("cffi"))

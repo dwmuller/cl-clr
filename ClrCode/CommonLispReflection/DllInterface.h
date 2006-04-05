@@ -55,23 +55,21 @@ extern "C" {
 
     // Make an object array. The primary use for this is in preparing argument
     // arrays for invoke_member. The following three functions are used to efficiently
-    // manipulate the array contents, and will work with any System.Array object.
+    // manipulate the array contents, and will work with any System.Array object. Note
+    // that set_array_element() normally return zero, unless an exception is thrown, in
+    // which case see returned_exception().
     _declspec(dllexport) clr_handle make_object_array(int n);
     _declspec(dllexport) clr_handle get_array_element(clr_handle arry, int index);
-    _declspec(dllexport) void set_array_element(clr_handle arry, int index, clr_handle obj);
-    _declspec(dllexport) int array_length(clr_handle arry);
+    _declspec(dllexport) clr_handle set_array_element(clr_handle arry, int index, clr_handle obj);
 
     // If the input handle represents an exception that resulted from a call
-    // to invoke_member, then this returns a handle for the exception.
+    // to any function defined in this file, then this returns a handle for the
+    // exception.
     _declspec(dllexport) clr_handle returned_exception(clr_handle);
 
     // If the input handle represents a void return type (see invoke_member()),
     // this return 1, otherwise 0.
     _declspec(dllexport) int is_void_return(clr_handle);
-
-    // Returns a handle to the default System.AppDomain object. This is a useful
-    // starting point for all kinds of activities, especially for finding types.
-    _declspec(dllexport) clr_handle get_default_app_domain();
 
     // This returns a handle to a type object for the named system type. This
     // is important for bootstrapping, letting you get to basic types like System.Type
@@ -80,20 +78,8 @@ extern "C" {
     _declspec(dllexport) clr_handle get_system_type(const char* name);
 
     // Can't do much in the way of invoking without binding flags. This converts
-    // a binding flag name string to its corresponding bitmask.
-    _declspec(dllexport) int binding_flag(const char* name);
-
-    // Returns a handle to a new LispBinder object. These objects derive from
-    // System.Binder. The LispBinder has several interesting characteristics
-    // that make it more suitable than the default binder for dynamic languages
-    // like Lisp. These are documented elsewhere.
-    //
-    // If the allow_double_narrowing argument is non-zero, then the binder
-    // allows double arguments to match single float parameters, and narrows
-    // them implicitly. This is useful if the host language does not support
-    // the single float type, as is the case for at least one popular Lisp
-    // implementation.
-    _declspec(dllexport) clr_handle make_lisp_binder(int allow_double_narrowing);
+    // a binding flag name string to its corresponding value.
+    _declspec(dllexport) clr_handle binding_flag(const char* name);
 
     // Wrap an argument array (a handle to a CLR array) in a marker object
     // recognized by the Lisp binder. The marker object tells the binder to
@@ -106,10 +92,18 @@ extern "C" {
     // the former usage explicit; the latter usage is always used otherwise.
     _declspec(dllexport) clr_handle wrap_varargs_array(clr_handle args);
 
-    // Take an object and the name of a type, and return true if the 
-    _declspec(dllexport) int is_simple_type(clr_handle obj, const char* type);
+    // Take the name of a type, and return the type code. This may only work
+    // for system type names. Returns -1 on error.
+    // See System.Type.GetTypeCode.
+    _declspec(dllexport) int type_type_code(const char* type_name);
+
+    // Take an object, and return its type's type code. 
+    // Returns -1 on error.
+    _declspec(dllexport) int object_type_code(clr_handle object_handle);
 
     // Would like to use stdint.h names here, but VS doesn't have that file.
+    // These will not return exception indicators; no exceptions should be
+    // possible short of imminent asteroidal impact.
     _declspec(dllexport) clr_handle box_Byte   (unsigned char);
     _declspec(dllexport) clr_handle box_Int16  (short);
     _declspec(dllexport) clr_handle box_Int32  (int);
@@ -131,4 +125,7 @@ extern "C" {
     _declspec(dllexport) int           unbox_Char   (clr_handle);
     _declspec(dllexport) int           unbox_Boolean(clr_handle);
     _declspec(dllexport) double        unbox_DoubleFromSingle(clr_handle);
+
+    // LispBinder
+    _declspec(dllexport) clr_handle make_lisp_binder(int allow_double_narrowing);
 }

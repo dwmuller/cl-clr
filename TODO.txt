@@ -1,26 +1,19 @@
 
-Check list of exported symbols and clean up packages.lisp.
-
-Check all exported functions to make sure we're doing good argument
-error reporting. (E.g. use ARG-TO-TYPE-OBJECT and
-TYPE-ARG-TO-TYPE-OBJECT wherever appropriate.)
+Convert exceptions to an appropriate condition.
 
 Rework marking of varargs arrays. If it's possible to derive the
 marker class from Array, do so -- it would be more efficient!
 
-Convert exceptions to an appropriate condition.
-
 Reimplement DEFINE-CLR-CALL. First version might be stupid.
 
-Test by-ref types -- probably need to do some work to make these
-happen.
+See packages.lisp for other as-yet-unimplemented functions.
+
+Test by-ref types. I don't think they're going to automagically work,
+but they might. If not, we need a wrapper class in the substrate,
+changes to argument matching and binding to account for it, and work
+in the Lisp layer to use it.
 
 Implement TREAT-AS. Requires work in invocation and substrate.
-
-Improve exception messages in substrate -- esp. bad arg values.
-
-Disconnect reader syntax enablement from adding packages to the
-use-list. Needed in the REPL.
 
 Test performance. Add tools to the substrate to help with this.
 

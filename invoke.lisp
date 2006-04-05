@@ -13,6 +13,10 @@
 
 (in-package :cl-clr)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Commonly used binding flag combinations.
+
 (defvar *static-member-binding-flags*
   (binding-flags "Static"
                  "GetProperty"
@@ -42,6 +46,37 @@
                  "CreateInstance"
                  "Public"))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; CLR type objects used internally
+;;
+(defvar *system-object-type*
+  "The CLR type object representing System.Object.")
+
+(defvar *system-type-type* nil
+  "The CLR type object representing System.Type.")
+
+(defvar *system-array-type* nil
+  "The CLR type object representing System.Array.")
+  
+(defvar *system-convert-type* nil
+  "The CLR type object representing System.Convert.")
+
+(defvar *system-enum-type* nil
+  "The CLR type object representing System.Enum.")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; CLR objects used internally
+;;
+(defvar *lisp-binder* nil
+  "The LispBinder object, a CLR object derived from System.Binder
+that determines how members are selected.")
+
+(defvar *default-app-domain* nil
+  "The default application domain object. This is the root of all
+type lookups.")
+  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 #|
 (defclass clr-ref ()
   ((value :initarg :value
@@ -68,6 +103,65 @@ a type internal to CL-CLR."
   (values))
 |#
 
+(defun box (value)
+  "Converts VALUE to a CLR-OBJECT, or signals an error if there
+is no way to do this. If VALUE is already a CLR-OBJECT, it is
+returned."
+  (if (clr-object-p value)
+      value
+      (%make-clr-object (%value-to-handle value))))
+
+(defun unbox (object)
+  "Converts OBJECT from a CLR-OBJECT to a Lisp value. If OBJECT
+is not a CLR-OBJECT, it is simply returned."
+  (if (clr-object-p object)
+      (%handle-to-value (handle-of object))
+      object))
+
+  
+(defun get-system-type (name)
+  "Get a CLR type object from its full name. This only works
+reliably for built-in runtime system types.."
+  (%make-clr-object (%signal-if-exception (%get-system-type name))))
+
+(defmacro do-clr-array ((var init-form &optional result) &body body)
+  "INIT-FORM should evaluate to a CLR object of type ARRAY with a
+rank of one.  BODY will be evaluated with VAR bound to each
+element of this array in turn.  Finally, the result of evaluating
+the form RESULT is returned."
+  (let ((array (gensym)))
+    `(let ((,array ,init-form))
+       (check-type ,array clr-object)
+       (loop
+          for i from 0 below (invoke-instance ,array "Length")
+          for ,var = (%handle-to-value
+                      (%signal-if-exception (%get-array-element ,array i)))
+          do (progn ,@body)
+          finally return ,result))))
+
+(defun clr-array-to-list (array)
+  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
+same elements."
+  (check-type array clr-object)
+  (loop
+     for i from 0 below (invoke-instance array "Length")
+     collecting (%handle-to-value
+                 (%signal-if-exception (%get-array-element array i)))))
+
+(defun aref* (array index)
+  "Return the element at offset INDEX in the CLR array object ARRAY."
+  (check-type array clr-object)
+  (check-type index integer)
+  (%handle-to-value (%signal-if-exception (%get-array-element array index))))
+
+(defun (setf aref*) (array index value)
+  (check-type array clr-object)
+  (check-type index integer)
+  (%signal-if-exception (%set-array-element array
+                                            index
+                                            (%value-to-handle value)))
+  value)
+
 (defun invoke-static (type member-name &rest args)
   "Invokes or retrieves the value of the static member designated
 by MEMBER-NAME and TYPE. TYPE must be a CLR-OBJECT referring to
@@ -76,11 +170,11 @@ the ARGS are its indexes. If the member is a method, ARGS are the
 arguments. If the member is a field, there must be no optional
 arguments."
   (%with-clr-handle (args-array (%make-args-array args (length args)))
-    (generic-invoke-member type
-                           member-name
-                           *static-member-binding-flags*
-                           nil
-                           args-array)))
+    (%generic-invoke-member type
+                            member-name
+                            *static-member-binding-flags*
+                            nil
+                            args-array)))
 
 (defun invoke-instance (object member-name &rest args)
   "Invokes or retrieves the value of the instance member
@@ -89,11 +183,11 @@ CLR-OBJECT.  If the member is a property, the ARGS are its
 indexes. If the member is a method, ARGS are the arguments. If
 the member is a field, there must be no optional arguments."
   (%with-clr-handle (args-array (%make-args-array args (length args)))
-    (generic-invoke-member nil
-                           member-name
-                           *instance-member-binding-flags*
-                           object
-                           args-array)))
+    (%generic-invoke-member nil
+                            member-name
+                            *instance-member-binding-flags*
+                            object
+                            args-array)))
 
 (defun set-static (new-value type member-name &rest indexes)
   "Sets the value of the member designated by MEMBER-NAME and
@@ -103,14 +197,16 @@ the member is a property, the INDEXES are its indexes. If the
 member is a field, there must be no optional arguments."
   (%with-clr-handles* ((args-array (%make-args-array indexes
                                                      (1+ (length indexes))))
-                       (new-handle (%box new-value)))
+                       (new-handle (%value-to-handle new-value)))
     ;; Tack the new value on the end of the args array.
-    (%set-array-element args-array (length indexes) new-handle)
-    (generic-invoke-member type
-                           member-name
-                           *static-set-prop-or-field-binding-flags*
-                           nil
-                           args-array))
+    (%signal-if-exception (%set-array-element args-array
+                                              (length indexes)
+                                              new-handle))
+    (%generic-invoke-member type
+                            member-name
+                            *static-set-prop-or-field-binding-flags*
+                            nil
+                            args-array))
   new-value)
 
 (defun set-instance (new-value object member-name &rest indexes)
@@ -121,14 +217,16 @@ indexes. If the member is a field, there must be no optional
 arguments."
   (%with-clr-handles* ((args-array (%make-args-array indexes
                                                      (1+ (length indexes))))
-                       (new-handle (%box new-value)))
+                       (new-handle (%value-to-handle new-value)))
     ;; Tack the new value on the end of the args array.
-    (%set-array-element args-array (length indexes) new-handle)
-    (generic-invoke-member nil
-                           member-name
-                           *instance-set-prop-or-field-binding-flags*
-                           object
-                           args-array))
+    (%signal-if-exception (%set-array-element args-array
+                                              (length indexes)
+                                              new-handle))
+    (%generic-invoke-member nil
+                            member-name
+                            *instance-set-prop-or-field-binding-flags*
+                            object
+                            args-array))
   new-value)
 
 (defun invoke-new (type &rest args)
@@ -136,11 +234,11 @@ arguments."
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
   (%with-clr-handle (args-array (%make-args-array args (length args)))
-    (generic-invoke-member type
-                           ".ctor"
-                           *create-instance-binding-flags*
-                           nil
-                           args-array)))
+    (%generic-invoke-member type
+                            ".ctor"
+                            *create-instance-binding-flags*
+                            nil
+                            args-array)))
 
 #|
 (defmacro define-clr-call (lisp-name
@@ -168,14 +266,27 @@ namespace-qualified name string of a CLR type."
            args)))
 |#
 
-;; Keep test here for now. Eventually we'll test via the public
-;; functions.
-(defun test ()
-  (let ((root (%make-clr-object (%get-default-app-domain))))
-    (print
-     (invoke-instance (invoke-instance (invoke-instance root
-                                                        "GetType")
-                                       "GetType")
-                      "FullName"))))
-                    
+(defun init-invoke ()
+  (setf
+   *system-object-type*  (get-system-type "System.Object")
+   *system-type-type*    (get-system-type "System.Type")
+   *system-array-type*   (get-system-type "System.Array")
+   *system-convert-type* (get-system-type "System.Convert")
+   *system-enum-type*    (get-system-type "System.Enum")
+   *lisp-binder*         (make-lisp-binder)
+   *default-app-domain*  (invoke-static (get-system-type "System.AppDomain")
+                                        "CurrentDomain"))
+  (values))
+
+(defun shutdown-invoke ()
+  (setf
+   *default-app-domain*  nil
+   *lisp-binder*         nil
+   *system-enum-type*    nil
+   *system-convert-type* nil
+   *system-array-type*   nil
+   *system-type-type*    nil
+   *system-object-type*  nil)
+  (values))
+
 

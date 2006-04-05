@@ -25,12 +25,11 @@ namespace-qualifier name string of the type."
 (defun symbol-to-clr-type-object (arg)
   "ARG must be a symbol designating a CLR type object. Returns
 the type object."
-  (if (symbolp arg)
-      (or (get arg 'clr-type)
-          (setf (get arg 'clr-type)
-                (find-type-from-namespace-qualified-name
-                 (symbol-to-clr-type-name arg))))
-      (t (error "Expected string, symbol, or CLR object, but got ~S." arg))))
+  (unless (symbolp arg)
+    (error "Expected string, symbol, or CLR object, but got ~S." arg))
+  (or (get arg 'clr-type)
+      (setf (get arg 'clr-type)
+            (find-type-from-full-name (symbol-to-clr-type-name arg)))))
 
 
 (defun clr-type-object-to-symbol (type-object)
@@ -46,8 +45,11 @@ the type object."
         type-symbol))))
 
 (defun clr-type-name-to-symbol (type-name)
+  "Returns the symbol that denotes the CLR type described by the
+string TYPE-NAME."
+  (check-type type-name string)
   (clr-type-object-to-symbol
-   (find-type-from-namespace-qualified-name type-name)))
+   (find-type-from-full-name type-name)))
 
 (defun clr-type-of (obj)
   "Given a CLR object, returns the symbol denoting the object's
@@ -61,7 +63,7 @@ CLR type."
 designator to a type object. Contrast with ARG-TO-TYPE-OBJECT."
   (cond ((symbolp arg) (symbol-to-clr-type-object arg))
         ((clr-object-p arg) arg)
-        ((stringp arg) (find-type-from-namespace-qualified-name arg))
+        ((stringp arg) (find-type-from-full-name arg))
         (t (error "Expected type designator (a symbol, CLR type object, type name string), but got ~S." arg))))
 
 (defun arg-to-type-object (arg)
@@ -77,16 +79,14 @@ symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
   (apply #'invoke-new (type-arg-to-type-object type) args))
 
-(defun list-to-clr-array (list &optional (base-type (get-system-type
-                                                     "System.Object")))
-  "Creates and returns a CLR array of base type BASE-TYPE \(a
-CONTAINER, type name string, or symbol representing a CLR type)
+(defun list-to-clr-array (list &optional (base-type *system-object-type*))
+  "Creates and returns a CLR array of base type BASE-TYPE (a
+CLR-OBJECT, type name string, or symbol representing a CLR type)
 and rank 1 with the elements from the Lisp list LIST. BASE-TYPE
 defaults to System.Object."
+  (check-type list list)
   (setf base-type (type-arg-to-type-object base-type))
-  (let ((array (new (get-system-type "System.Array")
-                    base-type
-                    (length list))))
+  (let ((array (new *system-array-type* base-type (length list))))
     (loop
        for item in list
        for i from 0
@@ -147,8 +147,7 @@ whose name is a CLR type name in that namespace, bind the symbol
 as a designator for that CLR type. Returns the symbol."
   (unless type-object
     (setf type-object
-          (find-type-from-namespace-qualified-name
-           (symbol-to-clr-type-name type-symbol))))
+          (find-type-from-full-name (symbol-to-clr-type-name type-symbol))))
   (let (members)
     (do-clr-array (member-info (invoke-member type-object "GetMembers"))
       (pushnew (get-member-symbol (invoke-member member-info "Name")) members))
@@ -169,6 +168,7 @@ are imported into that package from CLR-SYMBOLS."
   "Binds all type and member symbols of a namespace which can be
 found in the currently loaded assemblies of the current
 application domain.  Returns the namespace package."
+  (check-type namespace string)
   (let ((package (get-namespace-package namespace)))
     (do-clr-array (assembly (invoke-member (invoke-member "System.AppDomain"
                                                           "CurrentDomain")
@@ -178,39 +178,32 @@ application domain.  Returns the namespace package."
           (clr-type-object-to-symbol type-object) package)))
     package))
 
-(defmacro def-namespaces (&rest namespaces)
-  "Used to declare the namespaces that will be referenced by a program.
-Ensures that a package exists to represent each namespace. If you
-use a separate file to define packages for you program, it is
-recommended that you include a def-namespaces form in this same
-file."
-  (eval-when (:compile-toplel :load-toplevel :execute)
-    `(map nil #'get-namespace-package ',namespaces)))
-
-
 (defun import-type (type &optional (package *package*))
   "TYPE is a symbol or string designating a CLR
 type. IMPORT-TYPES imports the symbol designating the CLR type to
-PACKAGE, which defaults to *PACKAGE*. It also imports symbols to
-represent all public members of the CLR type. Returns the symbol
-designating the CLR type."
+the package designated by PACKAGE, which defaults to
+*PACKAGE*. It also imports symbols to represent all public
+members of the CLR type. Returns the symbol designating the CLR
+type."
   (let ((type-symbol (clr-type-object-to-symbol
                       (type-arg-to-type-object type))))
     (import type-symbol package)
     (import (get type-symbol 'clr-members) package)
     type-symbol))
 
-(defun init-symbols ()
+(defun init-symbols (&optional dump)
   ;; If there are type symbols defined, make sure that they're set to
   ;; something. This is relevant when the system is being
   ;; re-initialized e.g. when loading and initializing a saved
   ;; image.
   (dolist (pkg *namespace-packages*)
     (do-external-symbols (sym pkg)
-      (when (stringp (get sym 'clr-type))
-        ;(format t "~&Initializing type symbol ~S." sym)
-        (setf (get sym 'clr-type)
-              (find-type-from-namespace-qualified-name (get sym 'clr-type)))))))
+      (let ((type-name (get sym 'clr-type)))
+        (when (stringp type-name)
+          (when dump
+            (format t "~&Initializing type symbol ~S to ~S." sym type-name))
+          (setf (get sym 'clr-type)
+                (find-type-from-full-name type-name)))))))
 
 
 (defun shutdown-symbols ()

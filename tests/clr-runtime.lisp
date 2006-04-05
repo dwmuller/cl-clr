@@ -3,7 +3,7 @@
 ;;;
 (in-package :cl-clr.tests)
 
-(use-namespaces "System")
+(enable-clr-syntax "System")
 
 (deftest test-clr-runtime ()
   (let ((appdomain (?.CurrentDomain '?AppDomain)))

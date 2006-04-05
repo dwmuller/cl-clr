@@ -4,11 +4,11 @@
 ;;;
 (in-package :cl-clr)
 
-(defun init-clr ()
+(defun init-clr (&optional dump)
   "Initializes CLCLR, and loads objects previously referenced by
 the system."
-  (init-ffi)
-  (init-symbols)
+  (init-invoke)
+  (init-symbols dump)
   (values))
 
 (defun shutdown-clr ()
@@ -17,7 +17,7 @@ INIT-CLR can reconstitute the current environment if the
 necessary assemblies are already loaded and define the necessary
 types and members."
   (shutdown-symbols)
-  (shutdown-ffi)
+  (shutdown-invoke)
   (values))
 
 (eval-when (:load-toplevel :execute)
