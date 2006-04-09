@@ -4,7 +4,6 @@
 
 #include "stdafx.h"
 #include "DllInterface.h"
-#include "LispBinder.h"
 #include <assert.h>
 #include <cstring>
 
@@ -13,118 +12,52 @@ using namespace System::Reflection;
 using namespace System::Runtime::InteropServices;
 using namespace SpookyDistance::CommonLispReflection;
 
-ref class TreatAs
+namespace SpookyDistance
 {
-public:
-    Type^   effective_type;
-    Object^ value;
-};
-
-// This is used internally to convert an object into a handle that we can
-// safely give to the Lisp system.
-static inline clr_handle GetHandleFromObject(Object^ object)
-{
-    if (object == nullptr)
-        return 0;
-    return GCHandle::ToIntPtr(GCHandle::Alloc(object)).ToPointer();
-}
-
-// This is used to get the object referred to by a handle.
-static inline Object^ GetObjectFromHandle(clr_handle handle)
-{
-    if (!handle)
-        return nullptr;
-    return ((GCHandle)IntPtr(handle)).Target;
-}
-
-ref class InvocableMemberPredicate {
-    LispBinder^ binder;
-    String^ name;
-    array<Object^>^ args;
-public:
-    InvocableMemberPredicate(LispBinder^ b,
-                             String^ nm,
-                             array<Object^>^ a)
-        : binder(b),
-          name(nm),
-          args(a)
+    ref class TreatAs
     {
+    public:
+        Type^   effective_type;
+        Object^ value;
+    };
+
+    // This is used internally to convert an object into a handle that we can
+    // safely give to the Lisp system.
+    static inline clr_handle GetHandleFromObject(Object^ object)
+    {
+        if (object == nullptr)
+            return 0;
+        return GCHandle::ToIntPtr(GCHandle::Alloc(object)).ToPointer();
     }
-    bool IsInvocable(MemberInfo^ member, Object^)
+
+    // This is used to get the object referred to by a handle.
+    static inline Object^ GetObjectFromHandle(clr_handle handle)
     {
-        if (member->Name == name)
-            return true;
-        if (MethodBase^ method = dynamic_cast<MethodBase^>(member))
+        if (!handle)
+            return nullptr;
+        return ((GCHandle)IntPtr(handle)).Target;
+    }
+
+    ref class ExceptionReturn
+    {
+    public:
+        Exception^ exception;
+        ExceptionReturn(Exception^ e)
+            : exception(e)
         {
-            if (method->IsSpecialName
-                && method->Name->EndsWith(name)
-                && method->Name->StartsWith("get_")
-                && method->Name->Length == (name->Length + 4))
-            {
-                return binder->ArgsConformToParams(method->GetParameters(),
-                                                   args,
-                                                   LispBinder::TypeFromObject);
-            }
         }
-        return false;
-    }
-};
+    };
 
-ref class ExceptionReturn
-{
-public:
-    Exception^ exception;
-    ExceptionReturn(Exception^ e)
-        : exception(e)
+    clr_handle MakeExceptionReturnHandle(Exception^ e)
     {
+        return GetHandleFromObject(gcnew ExceptionReturn(e));
     }
-};
-clr_handle MakeExceptionReturnHandle(Exception^ e)
-{
-    return GetHandleFromObject(gcnew ExceptionReturn(e));
 }
-
-ref class VoidReturn
-{
-    VoidReturn () {}
-    static VoidReturn^ instance = gcnew VoidReturn;
-    static clr_handle  instanceHandle = GetHandleFromObject(Instance);
-public:
-    static property VoidReturn^ Instance {
-        VoidReturn^ get () {return instance;}
-    }
-    static property clr_handle  InstanceHandle {
-        clr_handle get () {return instanceHandle;}
-    }
-};
+using namespace SpookyDistance;
 
 //////////////////////////////////////////////////////////////////////////////
 // Exported entry points
 
-clr_handle make_lisp_binder(int allow_double_narrowing)
-{
-    try
-    {
-        return GetHandleFromObject(gcnew LispBinder(allow_double_narrowing != 0));
-    }
-    catch (Exception^ e)
-    {
-        return MakeExceptionReturnHandle(e);
-    }
-}
-
-clr_handle wrap_varargs_array(clr_handle args)
-{
-    try
-    {
-        Array^ arry = safe_cast<Array^>(GetObjectFromHandle(args));
-        return GetHandleFromObject(LispBinder::VarArgsBase::WrapVarArgs(arry));
-    }
-    catch (Exception^ e)
-    {
-        return MakeExceptionReturnHandle(e);
-    }
-}
 
 clr_handle returned_exception(clr_handle e_handle)
 {
@@ -132,11 +65,6 @@ clr_handle returned_exception(clr_handle e_handle)
     if (e)
         return GetHandleFromObject(e->exception);
     return 0;
-}
-
-int is_void_return(clr_handle v_handle)
-{
-    return v_handle == VoidReturn::InstanceHandle;
 }
 
 clr_handle get_system_type(const char* name)
@@ -185,23 +113,25 @@ clr_handle set_array_element(clr_handle arry, int index, clr_handle obj)
     }
 }
 
-clr_handle binding_flag(const char* name)
+clr_handle enum_value(clr_handle type_handle, const char* name)
 {
     try
     {
-        return GetHandleFromObject(safe_cast<BindingFlags^>(Enum::Parse(BindingFlags::typeid, gcnew String(name))));
+        Object^ type_as_object = GetObjectFromHandle(type_handle);
+        Type^ type = safe_cast<Type^>(type_as_object);
+        return GetHandleFromObject(Enum::Parse(type, gcnew String(name)));
     }
     catch (Exception^ e)
     {
         return MakeExceptionReturnHandle(e);
     }
 }
-// The Lisp system calls this to free an object for garbage collection.
+// The foreign client system calls this to free an object for garbage collection.
  void release_object_handle(clr_handle handle)
 {
     // Don't release a persistent singleton handle! (In release
     // builds, we don't want to pay the overhead of this check.)
-    assert(handle != VoidReturn::InstanceHandle);
+    assert(!is_void_return(handle));
     if (handle)
         ((GCHandle)IntPtr(handle)).Free();
 }
@@ -242,23 +172,21 @@ clr_handle invoke_member(clr_handle type_handle,
         // Let's unwrap all our presents:
         Object^ object = GetObjectFromHandle(object_handle);
         Object^ type_as_object = GetObjectFromHandle(type_handle);
-        if (object == nullptr && type_as_object == nullptr)
-            throw gcnew Exception("invoke_member() called with neither a type nor an object.");
-        Binder^ binder = safe_cast<Binder^>(GetObjectFromHandle(binder_handle));
-        Type^ type   = type_as_object ? safe_cast<Type^>(type_as_object) : object->GetType();
+        Type^   type = dynamic_cast<Type^>(type_as_object);
+        if (type_as_object && !type)
+            throw gcnew ArgumentException("The first argument to invoke_member() is not null, and is not a System.Type object.");
+        Object^ binder_as_object = GetObjectFromHandle(binder_handle);
+        Binder^ binder = dynamic_cast<Binder^>(binder_as_object);
+        if (binder_as_object && !binder)
+            throw gcnew ArgumentException("The fourth argument to invoke_member() is not null, and is not a System.Reflection.Binder object.");
         String^ name  = gcnew String(name_str);
         Object^ args_as_object = GetObjectFromHandle(args_handle);
-        array<Object^>^ args = args_as_object ? safe_cast<array<Object^>^>(args_as_object) : nullptr;
+        array<Object^>^ args = dynamic_cast<array<Object^>^>(args_as_object);
+        if (type_as_object && !type)
+            throw gcnew ArgumentException("The last argument to invoke_member() is not null, and is not an array of System.Object.");
 
-        BindingFlags binding_flags = BindingFlags(flags);
-
-        Object^ result = type->InvokeMember(name, binding_flags, binder, object, args);
-
-        if (result)
-        {
-            if (result->GetType() == Void::typeid)
-                return VoidReturn::InstanceHandle;
-        }
+        BindingFlags bflags = BindingFlags(flags);
+        Object^ result = LispBinder::InvokeWithLispSemantics(type, name, bflags, binder, object, args);
         return GetHandleFromObject(result);
     }
     catch (TargetInvocationException^ e)
@@ -322,3 +250,36 @@ double unbox_DoubleFromSingle(clr_handle handle)
 {
     return *safe_cast<Single^>(GetObjectFromHandle(handle));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+// Lisp-specific functions
+clr_handle make_lisp_binder(int allow_double_narrowing)
+{
+    try
+    {
+        return GetHandleFromObject(gcnew LispBinder(allow_double_narrowing != 0, true));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+
+int is_void_return(clr_handle v_handle)
+{
+    return GetObjectFromHandle(v_handle) == VoidReturn::Instance;
+}
+
+clr_handle wrap_varargs_array(clr_handle args)
+{
+    try
+    {
+        Array^ args_array = safe_cast<Array^>(GetObjectFromHandle(args));
+        return GetHandleFromObject(VarArgsBase::Wrap(args_array));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+

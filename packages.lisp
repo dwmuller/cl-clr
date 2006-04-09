@@ -19,14 +19,14 @@
            ;:define-clr-call TODO
            :do-assemblies
            :do-clr-array
-           :enum-to-integer
+           :enum-value
+           :exception-of
            :import-type
-           :integer-to-enum
            :init-clr
            :list-to-clr-array
            :load-assembly
            :new
-           :or-enums
+           :or-enum-values
            :print-members
            :print-types
            :ref

@@ -8,7 +8,7 @@
   "Loads an assembly into the current application domain using
 System.AppDomain.Load(). The arguments must be assembly name strings."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (apply #'invoke-member *default-app-domain* "Load" ,@args)))
+     (apply #'invoke-member *default-app-domain* "Load" ',args)))
 
 (defmacro do-assemblies (var &body body)
   "Execute body once for each assembly known to CL-CLR in the

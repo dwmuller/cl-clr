@@ -59,6 +59,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="$(NoInherit)"
+				OutputFile="$(OutDir)\SpookyDistance.CommonLispReflection.DllInterface.dll"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
 				AssemblyDebug="1"
@@ -91,7 +92,7 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			OutputDirectory="c:\program files\lispworks personal"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="1"
@@ -133,6 +134,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="$(NoInherit)"
+				OutputFile="$(OutDir)\SpookyDistance.CommonLispReflection.DllInterface.dll"
 				LinkIncremental="1"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
@@ -176,6 +178,10 @@
 			RelativePath="System.XML.dll"
 			AssemblyName="System.Xml, Version=2.0.0.0, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL"
 		/>
+		<ProjectReference
+			ReferencedProjectIdentifier="{4371ABE0-05EB-41DB-88CD-AF8C7B2F365A}"
+			RelativePathToProject=".\LispBinder\LispBinder.csproj"
+		/>
 	</References>
 	<Files>
 		<Filter
@@ -189,10 +195,6 @@
 			</File>
 			<File
 				RelativePath=".\DllInterface.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\LispBinder.cpp"
 				>
 			</File>
 			<File
@@ -223,10 +225,6 @@
 			>
 			<File
 				RelativePath=".\DllInterface.h"
-				>
-			</File>
-			<File
-				RelativePath=".\LispBinder.h"
 				>
 			</File>
 			<File

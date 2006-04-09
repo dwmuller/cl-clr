@@ -38,8 +38,7 @@
                         :depends-on ("packages"))
                  (:file "reader"
                         :depends-on ("packages"
-                                     "symbols"
-                                     "types"))
+                                     "symbols"))
                  (:file "enums"
                         :depends-on ("packages"
                                      "invoke"

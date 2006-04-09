@@ -5,35 +5,31 @@
 
 (in-package :cl-clr)
 
-(defun enum-to-integer (enum)
-  "Converts ENUM, which must be a CLR object derived from
-System.Enum, to an integer value."
-  (check-type enum clr-object)
-  ;; This is surprisingly tortuous... perhaps there's a better way?
-  (invoke-static *system-convert-type* "ChangeType"
-                 enum
-                 (invoke-static *system-enum-type*
-                                "GetUnderlyingType"
-                                (symbol-to-clr-type-object
-                                 (clr-type-of enum)))))
-(defun integer-to-enum (int type)
-  "Converts INT, an integer value, to a CLR-OBJECT of a type
-denoted by the CLR type object TYPE. The type must be derived
-from System.Enum."
-  (check-type int integer)
-  (check-type type clr-object)
-  (invoke-static *system-enum-type*
-                 "ToObject"
-                 (type-arg-to-type-object type)
-                 int))
+(defun enum-value (type name)
+  "Returns an enumeration value.
+TYPE is a CLR type designator (a symbol, string, or System.Type
+object) for a type derived from System.Enum. NAME can be a symbol
+or a string denoting a static field of that Enum type, or an
+integer."
+  (%handle-to-value
+   (%signal-if-exception (%enum-value (type-arg-to-type-object type)
+                                      (etypecase name
+                                        (symbol (get name 'clr-member))
+                                        (string name))))))
 
-(defun or-enums (&rest args)
-  (let ((type (clr-type-of (first args))))
-    (integer-to-enum
-     (reduce #'(lambda (value enum)
-                 (logior value (enum-to-integer enum)))
-             args
-             :initial-value 0) type)))
+(defun or-enum-values (type &rest args)
+  "Fetch and combine several enumeration values using
+LOGIOR. TYPE is a CLR type designator (a symbol, string, or
+System.Type object) for a type derived from System.Enum. Each
+remaining argument can be a symbol or a string denoting a static field of
+that Enum type, or an integer."
+  (let ((type (type-arg-to-type-object type)))
+    (reduce #'(lambda (value arg)
+                (logior value (if (typep arg 'integer)
+                                  arg
+                                  (enum-value type arg))))
+            args :initial-value 0)))
+
 
 
 

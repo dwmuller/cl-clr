@@ -19,6 +19,21 @@
                  (:file "clr-runtime"
                         :depends-on ("packages"
                                      "pcl-unit-test-framework"))
+                 (:file "member-access"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"))
+                 (:file "value-types"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"))
+                 (:file "member-selection"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"))
+                 (:file "all"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"
+                                     "member-access"
+                                     "value-types"
+                                     "member-selection"))
                  (:system "cl-clr"))
     :depends-on ("cl-clr"))
 

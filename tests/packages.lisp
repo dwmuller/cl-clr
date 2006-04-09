@@ -7,11 +7,12 @@
 (defpackage :pcl-unit-test-framework
   (:use :common-lisp)
   (:export :deftest
-           :check))
+           :check
+           :report-result))
 
 (defpackage :common-lisp-common-language-runtime.tests
   (:nicknames :cl-clr.tests)
   (:use :common-lisp :cl-clr :pcl-unit-test-framework)
   (:export :test-clr-runtime))
 
-  
+(cl-clr:load-assembly "SpookyDistance.CommonLispReflection.TestLibrary")

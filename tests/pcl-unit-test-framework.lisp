@@ -2,8 +2,10 @@
 ;;; This code comes directly from Practical Common Lisp, Chapter 9.
 ;;; Thanks go to the author, Peter Seibel.
 ;;;
-;;; A very simple but serviceable unit test framework in under 30
-;;; lines of code.
+;;; The original was under 30 lines of code!
+;;;
+;;; It has been modified to allow tests to run even when error
+;;; conditions are raised.
 ;;;
 (in-package :pcl-unit-test-framework)
 
@@ -20,7 +22,7 @@
 (defmacro check (&body forms)
   "Run each expression in 'forms' as a test case."
   `(combine-results
-    ,@(loop for f in forms collect `(report-result ,f ',f))))
+    ,@(loop for f in forms collect `(report-result ,f))))
 
 (defmacro combine-results (&body forms)
   "Combine the results (as booleans) of evaluating 'forms' in order."
@@ -29,7 +31,22 @@
       ,@(loop for f in forms collect `(unless ,f (setf ,result nil)))
       ,result)))
 
-(defun report-result (result form)
+(defmacro report-result (form)
   "Report the results of a single test case. Called by 'check'."
-  (format t "~:[FAIL~;pass~] ... ~a: ~a~%" result *test-name* form)
-  result)
+  (let ((result (gensym))
+        (condition (gensym))
+        (single-result (gensym)))
+    `(multiple-value-bind (,result ,condition)
+         (ignore-errors
+           ;; Just in case form returns multiple values, make sure
+           ;; that we return only one:
+           (multiple-value-bind (,single-result) ,form ,single-result))
+       (format t "~:[FAIL~;pass~] ... ~A: ~S~@[~%    ~
+                  Error condition of type ~a signalled.~]~@[~%~
+                  ~<    ~@;~A~>~]~%"
+               ,result
+               *test-name*
+               ',form
+               (when ,condition (type-of ,condition))
+               ,condition)
+       ,result)))

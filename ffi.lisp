@@ -11,9 +11,15 @@
 
 (in-package :cl-clr)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; DLL interface definition via CFFI.
+;;;
+
 (defctype clr-handle :pointer)
 
-(load-foreign-library '(:default "CommonLispReflection"))
+(load-foreign-library
+ '(:default "SpookyDistance.CommonLispReflection.DllInterface"))
 
 (defcfun ("invoke_member" %invoke-member) clr-handle
   (type-handle clr-handle)
@@ -47,24 +53,41 @@
 (defcfun ("release_object_handle" %release-object-handle) :void
   (handle clr-handle))
 
+(defcfun ("wrap_varargs_array" %wrap-varargs-array) :pointer
+  (handle clr-handle))
+
 (defcfun ("type_type_code" type-type-code) :int
     (type-name   :string))
 
 (defcfun ("object_type_code" %object-type-code) :int
     (object clr-handle))
 
-(defcfun ("binding_flag" %binding-flag) clr-handle
+(defcfun ("enum_value" %enum-value) clr-handle
+  (type clr-handle)
   (name :string))
-
-(defun binding-flags (&rest name)
-  (reduce #'(lambda (value name)
-              (logior value
-                      (%handle-to-value
-                       (%signal-if-exception (%binding-flag name)))))
-          name :initial-value 0))
 
 (defcfun ("make_lisp_binder" %make-lisp-binder) clr-handle
   (allow-double-narrowing :boolean))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Exception handling
+;;;
+;;; A PRINT-OBJECT method for CLR-EXCEPTION instances is defined in
+;;; invoke.lisp, where better tools exist for retrieving information
+;;; from the exception object.
+;;;
+(define-condition clr-exception (error)
+  ((exception :accessor exception-of :initarg :exception :type clr-object))
+  (:documentation "A condition raised to indicate that an
+ exception was thrown by CLR code invoked via CL-CLR."))
+
+(defun %signal-if-exception (handle)
+  (let ((e (%handle-to-value (%returned-exception handle))))
+    (when e
+      (%release-object-handle handle)
+      (error (make-condition 'clr-exception :exception e))))
+  handle)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -97,13 +120,6 @@
            ,@body))
       `(progn ,@body)))
 
-(defun %signal-if-exception (handle)
-  (let ((e (%handle-to-value (%returned-exception handle))))
-    (when e
-      (%release-object-handle handle)
-      (error "CLR Exception thrown.")))
-  handle)
-
 (defun %make-args-array (args length)
   (let ((array (%signal-if-exception (%make-object-array length))))
     (loop
@@ -118,6 +134,23 @@
                                                             i
                                                             handle)))))))
     array))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Binding flags -- needed for most invocations, so we provide
+;;; a convenience function. It's similar to OR-ENUM-VALUES.
+;;;
+(defun binding-flags (&rest args)
+  (let ((type (%handle-to-value
+               (%signal-if-exception
+                (%get-system-type "System.Reflection.BindingFlags")))))
+  (reduce #'(lambda (value arg)
+              (logior value
+                      (etypecase arg
+                        (string (%handle-to-value
+                                 (%signal-if-exception (%enum-value type arg))))
+                        (integer arg))))
+          args :initial-value 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -266,7 +299,8 @@ System.Type.InvokeMember. Works with the CommonLispReflection DLL
 to manage the translation of void return types and thrown
 exceptions. TYPE, OBJECT, and BINDER can be NIL and will be
 converted to handles.  TYPE and OBJECT must not both be NIL. ARGS
-is expected to be a handle of a CLR array, or NIL."
+is expected to be a handle of a CLR array, or NIL. Returns a value,
+not a handle."
   (assert (or type object) (type object))
   ;; Be careful here. One of the values that can be returned by
   ;; %invoke-member is a singleton handle to denote the void

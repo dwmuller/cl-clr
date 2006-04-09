@@ -1,8 +1,18 @@
+Rename the CommonLispReflection project file and directory to
+DllInterface.
 
-Convert exceptions to an appropriate condition.
+Update make-zip.cmd.
+
+Add support for callbacks into Lisp. Needed for the D3D examples.
 
 Rework marking of varargs arrays. If it's possible to derive the
 marker class from Array, do so -- it would be more efficient!
+
+Test events. Using add_EventName and remove_EventName should work
+fine.
+
+Test argument binding of floats and doubles, particularly when running
+with LispWorks.
 
 Reimplement DEFINE-CLR-CALL. First version might be stupid.
 
@@ -33,105 +43,56 @@ work results.
 Implement vendor-specific logic for freeing handles. (Done for
 Lispworks.)
 
+Test performance, compare to RDNZL.
+
+Test image creation and loading.
+
 Figure out what's up with GetType in AppDomain. Why do I get TWO
 MemberInfo objects for this? (Note: Worked around by preferring
 the on DeclaredType that can be converted to the other. Not
 a guaranteed solution.)
 
-Review TODO items below the line for continuing applicability.
+Add support for ASDF-INSTALL. I guess that requires that I get it
+working on my WinXP box first. :-)
 
---------------------
-Some of these items are more on the order of "wish" or "whacky idea to
-investigate" than "to do".
+Allow the addition of a namespace prefix on assembly contents when
+loading (or binding?) an assembly. This allows working with
+conflicting type names, and it's how C# deals with the problem (via a
+compiler switch).
 
-- Add support for ASDF-INSTALL. I guess that requires that I get it
-  working on my WinXP box first. :-)
+Track assemblies loaded via CL-CLR. This is a likely prereq for the
+previous item. It would also allow users to load assemblies without
+CL-CLR to omit them from type name searches.
 
-- INVOKE-MEMBER has one, possibly serious, problem. It uses
-  System.Type.InvokeMember, which is a great shortcut compared to
-  looking up MemberInfo objects. Unfortunately, the declared return
-  type is Object, so that's the type that resulting containers will
-  have. INVOKE-MEMBER casts to the dynamically-determined type.
+Allow specifying how CLR names are translated to symbol names:
+:upcase, :downcase, :preserve, :invert, and :lisp to attempt
+conversion to Lisp-like naming conventions. Default to :preserve,
+because it's the least likely to collide with Lisp names. Might want
+to use alternate package name prefixes for the different strategies.
 
-- The item above raises an interesting point. RDNZL follows Pinto's
-  approach in keeping the 'declared' or 'apparent' type with an object
-  reference, and using that as the basis for member lookups. This
-  follows the model of statically-typed languages like C#. I wonder if
-  this is worthwhile. I think the situations where a fully dynamic
-  approach causes problems are rare, and can be addressed through a
-  separate, explicit mechanism. (E.g. a TREAT-AS wrapper.) If this
-  were abandoned, the implementation could be much more efficient. In
-  fact, the DotNetContainer and DotNetReference classes could go away
-  entirely, using (GC-locked) CLR object references directly!
+Consider a more specific member symbol approach. Member symbols
+actually exist within class namespaces. Overriding does not create a
+new symbol. Symbols are automatically "imported" from base classes to
+derived classes. Consider analyzing all this when an assembly is
+loaded. Would result in a lot of symbols, but also more specific
+information per-symbol. Users who use specific member symbols (rather
+than generalized ones resolved at call time) would often get a
+performance boost.
 
-  I have tweaked CL-CLR so that it consistently casts returned
-  containers to the run-time type, in order to experiment with this.
+Define generalized member symbols as macros rather than
+functions. Expansion could include a unique symbol defined such that
+it could represent a unique calling site that self-optimizes the
+member lookup at runtime. When a *function* is needed, use a
+*specific* member symbol. (See previous item.) Generalized member
+symbol expansions might afford an opportunity to cache results
+of member info at a call site.
 
-- Add event support. Maybe. Using add_EventName and remove_EventName
-  seems to work just fine, and I'm not sure what should replace it
-  that would have syntax conforming to the rest of CL-CLR.
-
-- Allow overriding of the package name prefix for namespace
-  packages. Maybe. This would require a number of changes.
-
-- Allow the addition of a namespace prefix on assembly contents when
-  loading (or binding?) an assembly. This allows working with
-  conflicting type names, and it's how C# deals with the problem (via
-  a compiler switch).
-
-- Track assemblies loaded via CL-CLR? This would allow users to load
-  assemblies without CL-CLR to omit them from type name searches.
-
-- Allow specifying how CLR names are translated to symbol names:
-  :upcase, :downcase, :preserve, :invert, and :lisp to attempt
-  conversion to Lisp-like naming conventions. Default to :preserve,
-  because it's the least likely to collide with Lisp names. Might want
-  to use alternate package name prefixes for the different strategies
-  (see earlier item).
-
-- Find out what, if anything, Edi would like to integrate into RDNZL
-  from this. Need to work out with him what aspects are incompatible
-  with current RDNZL semantics and syntax, and to what extent this is
-  an issue. (How many RDNZL users are there? How open to change are
-  they? Does Edi even think the ideas in CL-CLR worthwhile, or does he
-  see flaws that I've missed so far?) Unfortunately he's been too busy
-  recently to take a look.
-
-- Enhance SLIME's symbol completion logic. This would make the
-  non-reader approach more viable, typing names in directly with
-  escape (e.g. (|.GetType '|Application|), assuming the CLR!System
-  package is being used) Possible algorithm:
+Enhance SLIME's symbol completion logic. This would make the
+non-reader approach more viable, typing names in directly with escape
+(e.g. (|.GetType '|Application|), assuming the CLR!System package is
+being used) Possible algorithm:
   - Make elisp code find symbol begin across escapes.
   - Close any open multi-escape before sending to SLIME.
   - Read as an uninterned symbol to find out what the reader makes of it.
   - Use the resulting symbol's name directly to find candidates.
 
-- Automatic run-time incremental caching of candidate member info
-  sets, in a member or type symbol property.  See
-  System.Reflection.Binder.BindToMethod and BindToField for some ideas
-  on why this would be useful. (For properties, perhaps need to use
-  the set/get method names?)
-
-- Allow strings to be provided where member or type objects are now
-  required? Of course, the above-mentioned caching of member info
-  won't happen in such cases. I'm not terribly interested in this,
-  actually, but maybe others see a need for it.
-
-- A custom Binder could provide a more elegant and correct solution to
-  the LispWorks single/double float problem, sacrificing precision
-  only when necessary to find a signature match. This would need to be
-  incorporated in RDNZL, or an alternate bottom layer if CL-CLR moves
-  away from RDNZL.
-
-- Define member symbols as macros rather than functions. Expansion
-  could include a unique symbol defined such that it could represent a
-  unique calling site that self-optimizes the member lookup at
-  runtime. Unfortunately, and perhaps terminally so, this would
-  preclude the use of member symbols with functions like APPLY or MAP.
-
-
-Testing TODO:
-
-- Test performance, compare to RDNZL.
-
-- Test image creation and loading.

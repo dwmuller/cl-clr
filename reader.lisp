@@ -69,9 +69,8 @@ topmost context is the current one.")
   (member chr +whitespace-char-list+ :test #'char=))
 
 (defun lookup-type-symbol (type-name)
-  (clr-type-object-to-symbol
-   (find-type-from-name type-name
-                        (namespaces-of (current-context)))))
+  (clr-type-name-to-symbol type-name
+                           (namespaces-of (current-context))))
 
 (defun read-clr-name (stream)
   (loop
@@ -145,7 +144,7 @@ type names."
          ;; especially important when loading a compiled file that uses
          ;; USE-NAMESPACES.
          (get-namespace-package ,ns)
-         (push ,ns (namespaces-of (current-context)))
+         (pushnew ,ns (namespaces-of (current-context)))
          (values)))))
 
 (defmacro use-namespaces (&rest namespaces)

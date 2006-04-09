@@ -22,14 +22,14 @@
                  "GetProperty"
                  "GetField"
                  "InvokeMethod"
-                 "Public"))
-
+                 "Public"
+                 "FlattenHierarchy"))
 (defvar *static-set-prop-or-field-binding-flags*
   (binding-flags "Static"
                  "SetProperty"
                  "SetField"
-                 "Public"))
-
+                 "Public"
+                 "FlattenHierarchy"))
 (defvar *instance-member-binding-flags*
   (binding-flags "Instance"
                  "GetProperty"
@@ -117,7 +117,6 @@ is not a CLR-OBJECT, it is simply returned."
   (if (clr-object-p object)
       (%handle-to-value (handle-of object))
       object))
-
   
 (defun get-system-type (name)
   "Get a CLR type object from its full name. This only works
@@ -265,6 +264,20 @@ namespace-qualified name string of a CLR type."
                          arg-spec))
            args)))
 |#
+
+(defun as-var-args (seq)
+  (%handle-to-value
+   (%signal-if-exception
+    (%wrap-varargs-array (if (typep seq 'clr-object)
+                             seq
+                             (list-to-clr-array seq))))))
+      
+;; This method determines how CLR exceptions are printed.
+(defmethod print-object ((x clr-exception) stream)
+  (if *print-escape*
+      (call-next-method)
+      (format stream "~<A Common Language Runtime exception was thrown: ~_~A~:>"
+              (invoke-instance (exception-of x) "Message"))))
 
 (defun init-invoke ()
   (setf

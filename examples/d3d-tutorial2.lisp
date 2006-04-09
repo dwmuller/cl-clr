@@ -19,11 +19,11 @@
 (load-assembly "Microsoft.DirectX.Direct3D, Version=1.0.2902.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35")
 (load-assembly "Microsoft.DirectX.Direct3DX, Version=1.0.2910.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35")
 
-(use-namespaces "System"
-                "System.Drawing"
-                "System.Windows.Forms"
-                "Microsoft.DirectX"
-                "Microsoft.DirectX.Direct3D")
+(enable-clr-syntax "System"
+                   "System.Drawing"
+                   "System.Windows.Forms"
+                   "Microsoft.DirectX"
+                   "Microsoft.DirectX.Direct3D")
 
 (defclass vertices ()
   ((window)
@@ -64,15 +64,15 @@
                          presentParams))
        (on-create-device this device nil)
        t))
-    (rdnzl-error (condition)
-      (print (?.ToString (rdnzl-error-exception condition)))
+    (clr-exception (condition)
+      (print (?.ToString (exception-of condition)))
       nil)))
 
 (defmethod on-create-device ((this vertices) sender event-args)
   (with-slots (device vertex-buffer) this
       (setf vertex-buffer
             (new '?VertexBuffer
-                 (get-type-object '?CustomVertex+TransformedColored)
+                 '?CustomVertex+TransformedColored
                  3
                  device
                  (?.None '?Usage)
@@ -90,7 +90,7 @@
   (with-slots (vertex-buffer) this
     (let ((verts (?.CreateInstance
                   '?Array
-                  (get-type-object '?CustomVertex+TransformedColored)
+                  '?CustomVertex+TransformedColored
                   3)))
       (setf (aref* verts 0) (new '?CustomVertex+TransformedColored
                                  150  50 0.5f0 1
@@ -126,7 +126,7 @@
   (render this))
 
 (defmethod on-keypress ((this vertices) e)
-  (when (eql (char-code (?.KeyChar e)) (enum-to-integer (?.Escape '?Keys)))
+  (when (eql (char-code (?.KeyChar e)) (enum-value ?.Escape '?Keys))
     (with-slots (window) this
       (?.Close window))))
 

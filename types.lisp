@@ -45,6 +45,10 @@ the first unescaped comma is returned."
     period))
   
 (defun split-type-name (type-name)
+  "Splits the CLR type name string TYPE-NAME into three parts,
+which are returned as separate strings: The namespace name, the
+type name, and the assembly name. If a part is missing, NIL is
+returned for that value."
   (let* ((comma  (find-assembly-separator type-name))
          (period (find-type-namespace-separator type-name :end comma)))
     (cond ((and period comma)
@@ -53,11 +57,13 @@ the first unescaped comma is returned."
                    (subseq type-name (1+ comma))))
           (period
            (values (subseq type-name 0 period)
-                   (subseq type-name (1+ period))))
+                   (subseq type-name (1+ period))
+                   NIL))
           (comma
            (values nil
                    (subseq type-name 0 comma)
-                   (subseq type-name (1+ comma)))))))
+                   (subseq type-name (1+ comma))))
+          (t (values nil type-name nil)))))
 
 (defun elide-assembly (type-name)
   "TYPE-NAME is a CLR type name string. Remove the assembly

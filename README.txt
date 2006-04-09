@@ -1,4 +1,4 @@
-$Id:$
+$Id$
 
 Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
@@ -12,7 +12,7 @@ more predictable, and more Lisp-like.
 
 CL-CLR uses symbols to represent CLR types, and CLR member names. You
 use these symbols in ways that are natural to Lisp programmers. The
-member names are used like methods; the type symbols are used very
+member names are used as operators; the type symbols are used very
 much like Lisp type symbols. Means are provided to load and track
 assemblies, and to bind the contents of an entire namespace to Lisp
 symbols.
@@ -87,6 +87,32 @@ conveniently, and provides both incremental definition of symbols and
 type name resolution against a used namespace list. See that file for
 details.
 
+
+----------------------------------------------------------------------------
+Prerequisites
+
+CL-CLR uses CFFI for all interaction between Lisp and the CLR.
+
+At the moment, some additional key functionality is implemented only
+for LispWorks. (Specifically, freeing of CLR handles.)
+
+----------------------------------------------------------------------------
+Installation
+
+Currently, you need to put the files CommonLispReflection.dll and
+CommonLispReflection.DllInterface.dll in the same directory as your
+Lisp executable. Then load CL-CLR using ASDF and you're good to go.
+
+Additional assemblies must be located in the same place, or a
+directory below it, or in the Global Assembly Cache (GAC).
+
+The eventual plan is to install the CL-CLR DLLs in the GAC, giving you
+more flexibility in the placement of your own assemblies.
+
+The file CommonLispReflection.TestLibrary.dll is needed if you want to
+run the unit tests, and should be located in the same place as the
+other DLLs. You must have DirectX 9.x installed in order to run the
+examples.
 
 ----------------------------------------------------------------------------
 The alternative reader syntax.
@@ -189,9 +215,9 @@ problems.
 
 Reader Dependence
 
-Be aware that if you use the reader syntax, you won't be able to
-redefine functions that depend on it without loading the entire
-file. This reminder is relevant if you use Slime or some other
+Be aware that if you use the reader syntax, you won't, in general, be
+able to redefine functions that depend on it without loading the
+entire file. This reminder is relevant if you use Slime or some other
 development environment that allows you to evaluate a fragment of code
 from a file. The CLR symbols will be mis-interpreted as symbols that
 actually start with a question mark, causing run-time errors.
@@ -200,7 +226,8 @@ actually start with a question mark, causing run-time errors.
 
 Motivations for this project.
 
-This project is an attempt to provide a layer on RDNZL that provides:
+This project started as an attempt to provide a layer on Edi Weitz's
+RDNZL. I was trying to provide:
 
 - Improved type resolution (avoiding some deficiencies of
   Type::GetType() without modifying RDNZL). CL-CLR searches loaded
@@ -221,8 +248,12 @@ This project is an attempt to provide a layer on RDNZL that provides:
 - Elimination of the need to lookup types from names, other than
   during reading or loading, in all common usage cases.
 
-Some of these features could be incorporated directly in RDNZL, and in
-fact could perform better that way.
+Some of these features could have been incorporated directly in
+RDNZL. However, I eventually wanted to experiment with some low-level
+ideas for improving peformance and alternate methods for binding
+arguments to parameters, so it became expedient to write my own
+substrate. The project owes a deep debt to Edi Weitz and RDNZL,
+however.
 
 This package also tries to preserve these important features of RDNZL:
 

@@ -36,7 +36,8 @@ the type object."
   (multiple-value-bind (namespace type-name)
       (split-type-name (invoke-member type-object "FullName"))
     (let ((package     (get-namespace-package namespace)))
-      (multiple-value-bind (type-symbol status) (intern type-name package)
+      (multiple-value-bind (type-symbol status)
+          (intern type-name package)
         (unless (eq status :external)
           (bind-type-symbol type-symbol type-object)
           (export type-symbol package)
@@ -44,12 +45,28 @@ the type object."
           (export (get type-symbol 'clr-members) package))
         type-symbol))))
 
-(defun clr-type-name-to-symbol (type-name)
+(defun clr-type-name-to-symbol (type-name &optional namespaces)
   "Returns the symbol that denotes the CLR type described by the
-string TYPE-NAME."
+string TYPE-NAME. NAMESPACES is an optional list of namespace
+name strings which will be searched if TYPE-NAME is not
+namespace-qualified."
   (check-type type-name string)
-  (clr-type-object-to-symbol
-   (find-type-from-full-name type-name)))
+  ;; TODO: If the assembly is given, and we find a symbol for the name
+  ;; but it's for a type from a different assembly, we will return the
+  ;; symbol even though it specifies the wrong type. In a case like
+  ;; this, we actually have a type name clash.
+  (multiple-value-bind (namespace simple-type-name)
+      (split-type-name type-name)
+    (when namespace
+      (setf namespaces (list namespace)))
+    (let ((type-symbol (loop
+                          for namespace in namespaces
+                          thereis (find-symbol simple-type-name
+                                               (get-namespace-package namespace)))))
+      (unless type-symbol
+        (setf  type-symbol (clr-type-object-to-symbol
+                            (find-type-from-name type-name namespaces))))
+      type-symbol)))
 
 (defun clr-type-of (obj)
   "Given a CLR object, returns the symbol denoting the object's
@@ -60,7 +77,9 @@ CLR type."
 
 (defun type-arg-to-type-object (arg)
   "Converts an argument value which is required to be a type
-designator to a type object. Contrast with ARG-TO-TYPE-OBJECT."
+designator to a type object. We accept a symbol, a CLR type
+object, or a string as a designator for a CLR type. Contrast with
+ARG-TO-TYPE-OBJECT, which accepts only a symbol."
   (cond ((symbolp arg) (symbol-to-clr-type-object arg))
         ((clr-object-p arg) arg)
         ((stringp arg) (find-type-from-full-name arg))
@@ -129,7 +148,7 @@ a CLR member name, with a preceding period."
   (setf (fdefinition (list 'setf member-symbol))
         #'(lambda (new-value object &rest args)
             (apply #'set-member new-value object member-name args)))
-  (setf (get member-symbol 'clr-member) t)
+  (setf (get member-symbol 'clr-member) member-name)
   member-symbol)
   
 (defun get-member-symbol (member-name)

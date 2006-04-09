@@ -15,33 +15,8 @@ Shortcomings that remain to be solved:
   object directly for storage down here.
 
 
-A more Lisp-like binding of methods is a goal. Here are the built-in
-CLI types:
-
-Name in CIL assembler   CLS Type?   Name in class library   Description
-bool                    Yes         System.Boolean          True/false value
-char                    Yes         System.Char             Unicode 16-bit char.
-object                  Yes         System.Object           Object or boxed value type
-string                  Yes         System.String           Unicode string
-float32                 Yes         System.Single           IEC 60559:1989 32-bit float
-float64                 Yes         System.Double           IEC 60559:1989 64-bit float
-
-unsigned int8           Yes         System.Byte             Unsigned 8-bit integer
-int16                   Yes         System.Int16            Signed 16-bit integer
-int32                   Yes         System.Int32            Signed 32-bit integer
-int64                   Yes         System.Int64            Signed 64-bit integer
-native int              Yes         System.IntPtr           Signed integer, native size
-
-int8                    No          System.SByte            Signed 8-bit integer
-native unsigned int     No          System.UIntPtr          Unsigned integer, native size
-typedref                No          System.TypedReference   Pointer plus exact type
-unsigned int16          No          System.UInt16           Unsigned 16-bit integer
-unsigned int32          No          System.UInt32           Unsigned 32-bit integer
-unsigned int64          No          System.UInt64           Unsigned 64-bit integer
-
-In addition, the System.Decimal type is encouraged but not required in
-CLI implementations. It appears to be immutable. We convert large
-numbers to Decimal objects.
+A more Lisp-like binding of methods is a primary goal. Another one is
+reduced memory management overhead for object representations.
 
 Member selection is modelled partially after CLOS's algorithms for
 selecting a primary method, but borrows from C#'s overload resolution 
