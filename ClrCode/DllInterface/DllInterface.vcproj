@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="CommonLispReflection"
+	Name="DllInterface"
 	ProjectGUID="{A694E769-03BA-47B9-86D0-29A370A6688B}"
 	RootNamespace="SpookyDistance.CommonLispReflection"
 	Keyword="ManagedCProj"
