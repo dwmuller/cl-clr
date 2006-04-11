@@ -8,7 +8,7 @@
                    "SpookyDistance.CommonLispReflection.TestLibrary")
 
 
-(deftest test-value-types ()
+(deftest value-types ()
   (check
     (new '?Struct1)
     (new '?Struct2)
@@ -19,3 +19,4 @@
       (eql (or-enum-values '?BindingFlags "Public" "Static")
            (or-enum-values '?BindingFlags public static)))))
        
+(bind-clr-symbols)

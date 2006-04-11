@@ -34,9 +34,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="LispBinder.cs" />
+    <Compile Include="Null.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="VarArgs.cs" />
-    <Compile Include="VarArgsBase.cs" />
+    <Compile Include="VarArgs.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="VarArgsT.cs" />
     <Compile Include="VoidReturn.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

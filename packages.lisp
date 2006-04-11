@@ -9,6 +9,7 @@
   (:use :common-lisp :cffi)
   
   (:export :aref*
+           :as-var-args
            :bind-namespace
            :box
            :clr-array-to-list
@@ -43,6 +44,7 @@
 ;;            :cast
 ;;            ;:import-assembly
 ;;            ;:import-types
+;;            ;:make-null-reference or something like it -- no type needed.
 
 ;;            :field           
 ;;            :invoke

@@ -38,8 +38,9 @@
 (defcfun ("get_system_type" %get-system-type) clr-handle
   (name :string))
 
-(defcfun ("make_object_array" %make-object-array) clr-handle
-  (n :int))
+(defcfun ("make_array" %make-array) clr-handle
+  (n :int)
+  (element-type clr-handle))
 
 (defcfun ("get_array_element" %get-array-element) clr-handle
   (array clr-handle)
@@ -119,21 +120,6 @@
          (%with-clr-handles* ,(cdr var-forms)
            ,@body))
       `(progn ,@body)))
-
-(defun %make-args-array (args length)
-  (let ((array (%signal-if-exception (%make-object-array length))))
-    (loop
-       for arg in args
-       for i upfrom 0  
-       do (%signal-if-exception
-           (cond
-             ((typep arg 'clr-object)
-              (%signal-if-exception (%set-array-element array i arg)))
-             (t (%with-clr-handle (handle (%value-to-handle arg))
-                  (%signal-if-exception (%set-array-element array
-                                                            i
-                                                            handle)))))))
-    array))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -287,40 +273,8 @@
         ((eql code *typecode-boolean*) (%unbox-boolean handle))
         (t (%make-clr-object handle))))))
      
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; The root of most invocation evils:
-;;;
-
-(defun %generic-invoke-member (type member-name flags object args
-                               &key (binder *lisp-binder*))
-  "A generic member invocation function based on
-System.Type.InvokeMember. Works with the CommonLispReflection DLL
-to manage the translation of void return types and thrown
-exceptions. TYPE, OBJECT, and BINDER can be NIL and will be
-converted to handles.  TYPE and OBJECT must not both be NIL. ARGS
-is expected to be a handle of a CLR array, or NIL. Returns a value,
-not a handle."
-  (assert (or type object) (type object))
-  ;; Be careful here. One of the values that can be returned by
-  ;; %invoke-member is a singleton handle to denote the void
-  ;; return. This value must not be wrapped, otherwise we'll release
-  ;; it, invalidating the handle. Besides, it would be a waste of
-  ;; resources. Similar comments apply to an exception return handle
-  ;; -- no point in wrapping it as a CLR-OBJECT, since we're only
-  ;; interested in the exception that it contains.
-  (let* ((result (%invoke-member (%value-to-handle type)
-                                 member-name
-                                 flags
-                                 (%value-to-handle binder)
-                                 (%value-to-handle object)
-                                 (or args (make-pointer 0)))))
-    (%signal-if-exception result)
-    (when (%is-void-return result)
-      (return-from %generic-invoke-member (values)))
-    (%handle-to-value result)))
-
 (defun make-lisp-binder ()
   (%make-clr-object (%signal-if-exception (%make-lisp-binder
                                            #+(and :lispworks :win32) t
                                            #-(and :lispworks :win32) nil))))
+

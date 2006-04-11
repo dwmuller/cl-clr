@@ -2,6 +2,9 @@ $Id$
 
 Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
+----------------------------------------------------------------------------
+Introduction
+
 CL-CLR is a package that facilitates interaction between Common Lisp
 programs and libraries that conform to the Common Language
 Specification, running on the Common Language Runtime. It is built on
@@ -87,7 +90,6 @@ conveniently, and provides both incremental definition of symbols and
 type name resolution against a used namespace list. See that file for
 details.
 
-
 ----------------------------------------------------------------------------
 Prerequisites
 
@@ -113,6 +115,51 @@ The file CommonLispReflection.TestLibrary.dll is needed if you want to
 run the unit tests, and should be located in the same place as the
 other DLLs. You must have DirectX 9.x installed in order to run the
 examples.
+
+----------------------------------------------------------------------------
+Parameter binding
+
+Parameter binding is involved in the process of selecting a member
+from among several candidates when a method is overloaded. It applies
+to both methods and to property accessors that take arguments.
+
+In a statically-typed language like C#, binding occurs at
+compile-time, based on the apparent (static) type of argument
+expressions. In addition, the "first argument" of an instance member
+access (the object) is special; its static type determines the scope
+within which a member name is looked up, and if the member is virtual,
+run-time dispatching among several implementations of a property or
+field is done, based on the object's actual (run-time) type.
+
+In CL-CLR this is all done at run-time based on actual object
+types. Member-name lookup is based on the run-time type of the first
+argument in an instance member reference. Inheritance and member
+hiding are taken into account (but no conversions other than those
+based on inheritance are considered). (Note 1) Run-time argument types
+are used to select among overloaded members, taking into account the
+possibility of implicit conversions. Thus overloaded methods act
+somewhat like CLOS methods in CL-CLR.
+
+The implicit conversion rules are based on C#'s algorithms, with the
+addition of some rules to accomodate the differences between Lisp's
+and the CLR's built-in types and conventions.
+
+Note 1: Yet another reader syntax is being considered which would give
+more control over name resolution, and less run-time overhead, at the
+cost of some (optional) verbosity.
+
+TODO: Describe implicit conversion in detail. Preliminary notes:
+
+C# defines a "null type" (not a real CLR type) for the null reference
+pointer, and treats it as a subtype of any reference type. We equate
+this to Lisp's NULL system class, and allow NIL (its only member) to
+be convertible to any reference type and to boolean False.
+
+T converts to boolean True.
+
+Like C#, we allow an array type with element type S to be implicitly
+treated as an array with element type T, provided both arrays have the
+same number of dimensions and S derives from or implements T.
 
 ----------------------------------------------------------------------------
 The alternative reader syntax.

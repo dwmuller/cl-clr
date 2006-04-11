@@ -275,11 +275,11 @@ namespace SpookyDistance.CommonLispReflection
             else if (kind == MemberTypes.Constructor)
             {
                 MethodBase[] methods
-                 = Array.ConvertAll<MemberInfo, MethodBase>(members,
-                                                            new Converter<MemberInfo, MethodBase>(delegate(MemberInfo m)
-                                                                                                  {
-                                                                                                      return (MethodBase)m;
-                                                                                                  }));
+                = Array.ConvertAll<MemberInfo, MethodBase>(members,
+                                                           new Converter<MemberInfo, MethodBase>(delegate(MemberInfo m)
+                                                           {
+                                                                return (MethodBase)m;
+                                                           }));
                 object state;
                 ConstructorInfo method = (ConstructorInfo)binder.BindToMethod(bflags, methods, ref args, null, null, null, out state);
                 if (method != null)
@@ -305,11 +305,11 @@ namespace SpookyDistance.CommonLispReflection
             else
             {
                 MethodBase[] methods
-                 = Array.ConvertAll<MemberInfo, MethodBase>(members,
-                                                            new Converter<MemberInfo, MethodBase>(delegate(MemberInfo m)
-                                                                                                  {
-                                                                                                      return (MethodBase)m;
-                                                                                                  }));
+                = Array.ConvertAll<MemberInfo, MethodBase>(members,
+                                                           new Converter<MemberInfo, MethodBase>(delegate(MemberInfo m)
+                                                           {
+                                                                return (MethodBase)m;
+                                                           }));
                 object state;
                 MethodBase method = binder.BindToMethod(bflags, methods, ref args, null, null, null, out state);
                 if (method == null)
@@ -352,18 +352,14 @@ namespace SpookyDistance.CommonLispReflection
         }
         static Type ElementTypeFromVarArgsType(Type type)
         {
-            if (!typeof(VarArgsBase).IsAssignableFrom(type))
+            if (!type.IsSubclassOf(typeof(VarArgs)))
                 return null;
-            return (Type)(type.GetGenericArguments().GetValue(0));
+            return type.GetGenericArguments()[0];
         }
 
         class SuppressParamsKeyword
         {
             public readonly static SuppressParamsKeyword Instance = new SuppressParamsKeyword();
-        };
-
-        class NilTypeClass
-        {
         };
 
         class TypeComparer : IComparer<Type>
@@ -527,9 +523,9 @@ namespace SpookyDistance.CommonLispReflection
             if (from == to)
                 return true;
 
-            if (from == typeof(NilTypeClass))
+            if (from == typeof(Null))
             {
-                if (to == typeof(NilTypeClass))
+                if (to == typeof(Null))
                     return true;
 
                 if (to.IsAssignableFrom(typeof(bool)))
@@ -537,13 +533,18 @@ namespace SpookyDistance.CommonLispReflection
 
                 return !(to.IsValueType);
             }
-            if (to == typeof(NilTypeClass))
+            if (to == typeof(Null))
                 return false;
 
             // Assignability appears to satisfy C# reference conversion rules.
             if (to.IsAssignableFrom(from))
                 return true;
 
+            if (from.IsArray && to.IsArray
+                && to.GetElementType().IsAssignableFrom(from.GetElementType())
+                && from.GetArrayRank() == to.GetArrayRank())
+                return true;
+                
             if (implicit_enum_conversion && to.IsEnum && IsConvertibleTo(from, Enum.GetUnderlyingType(to)))
                 return true;
                 
@@ -560,7 +561,7 @@ namespace SpookyDistance.CommonLispReflection
         // 2 if conversion to T2 is better
         int BetterConversion(Type s, Type t1, Type t2)
         {
-            if (s == typeof(NilTypeClass))
+            if (s == typeof(Null))
                 return 0;
 
             // The C# rules for determining a better conversion are paraphrased
@@ -614,12 +615,14 @@ namespace SpookyDistance.CommonLispReflection
         }
         delegate Type TypeAccessor(object obj);
         int BetterArgsMatch(int n_args,
-                                        object[] args,
-                                        TypeAccessor type_accessor,
-                                        ParameterInfo[] params1,
-                                        ParameterInfo[] params2)
+                            object[] args,
+                            TypeAccessor type_accessor,
+                            ParameterInfo[] params1,
+                            ParameterInfo[] params2)
         {
-            for (int i = 0; i < n_args; ++i)
+            if (n_args == 0)
+                return 0;
+            for (int i = 0; i < n_args-1; ++i)
             {
                 int match = BetterConversion(type_accessor(args[i]),
                                              params1[i].ParameterType,
@@ -627,7 +630,14 @@ namespace SpookyDistance.CommonLispReflection
                 if (match != 0)
                     return match;
             }
-            return 0;
+            // Treat the last argument special in case it's a VarArgs type.
+            int last = n_args-1;
+            Type last_arg_type = type_accessor(args[last]);
+            if (last_arg_type.IsSubclassOf(typeof(VarArgs)))
+                last_arg_type = VarArgs.TypeToArrayType(last_arg_type);
+            return BetterConversion(last_arg_type,
+                                    params1[last].ParameterType,
+                                    params2[last].ParameterType);
         }
         // Returns the element type of the last argument in parameters,
         // if it's a param array denoting the ability to receive a
@@ -646,13 +656,13 @@ namespace SpookyDistance.CommonLispReflection
         Type TypeFromObject(object obj)
         {
             if (obj == null)
-                return typeof(NilTypeClass);
+                return typeof(Null);
             return obj.GetType();
         }
         Type TypeFromType(object obj)
         {
             if (obj == null)
-                return typeof(NilTypeClass);
+                return typeof(Null);
             return (Type)(obj);
         }
         ParameterInfo[] ParamsFromPropertyInfo(object info)
@@ -707,10 +717,10 @@ namespace SpookyDistance.CommonLispReflection
         delegate ParameterInfo[] ParamsAccessor(object obj);
 
         object SelectMethods(MemberInfo[] match,
-                                           bool check_conformance,
-                                           ParamsAccessor params_accessor,
-                                           object[] args,
-                                           TypeAccessor type_accessor)
+                             bool check_conformance,
+                             ParamsAccessor params_accessor,
+                             object[] args,
+                             TypeAccessor type_accessor)
         {
             if (match == null)
                 throw new ArgumentNullException();
@@ -742,6 +752,9 @@ namespace SpookyDistance.CommonLispReflection
                 }
                 int n_required = parameters.Length;
                 Type varying_type = null;
+                // If the argument list ends in a VarArgs object, then we
+                // treat ParamArray parameters like ordinary parameters. Our
+                // type-matching logic treats a VarArg object like an array.
                 if (var_args_type == null)
                     varying_type = VaryingParamsType(parameters);
                 if (varying_type != null)
@@ -754,8 +767,10 @@ namespace SpookyDistance.CommonLispReflection
                                               type_accessor,
                                               best.GetParameters(),
                                               parameters);
-                // If it's a tie so far, but one takes a varying argument list and
-                // the other doesn't, then the one without varying args wins.
+                // If it's a tie so far, but one takes a varying argument list
+                // and the other doesn't, then the one without varying args
+                // wins. However, we don't do this test if the argument list
+                // ends in a VarArgs object.
                 if (matches == 0 && var_args_type == null)
                 {
                     Type best_varying_type = VaryingParamsType(best.GetParameters());
@@ -848,7 +863,7 @@ namespace SpookyDistance.CommonLispReflection
                 }
                 else
                 {
-                    VarArgsBase wrapped_varargs = args[n_required] as VarArgsBase;
+                    VarArgs wrapped_varargs = args[n_required] as VarArgs;
                     if (wrapped_varargs != null)
                     {
                         new_args[n_required] = wrapped_varargs.Args;

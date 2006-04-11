@@ -15,7 +15,7 @@
 ;;; Abbreviated:
 ;;; (M|P|F)(C|I)(S|V|A)?[0-9]+
 ;;;
-(deftest test-member-access ()
+(deftest member-access ()
   (let ((obj1 (new '?ConcreteClass1))
         (obj2 (new '?TrivialDerivedClass1))
         (obj3 (new '?OverridingClass1))

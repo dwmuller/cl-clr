@@ -5,7 +5,7 @@
 
 (enable-clr-syntax "System")
 
-(deftest test-clr-runtime ()
+(deftest clr-runtime ()
   (let ((appdomain (?.CurrentDomain '?AppDomain)))
     (check
      ;; constructors

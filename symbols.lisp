@@ -11,6 +11,10 @@
 (defvar *namespace-packages* nil
   "List of packages created to represent namespaces.")
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Basic conversions to/from type symbols.
+;;;
 (defun symbol-to-clr-type-name (sym)
   "Given a symbol designating a CLR type, returns the
 namespace-qualifier name string of the type."
@@ -30,6 +34,17 @@ the type object."
   (or (get arg 'clr-type)
       (setf (get arg 'clr-type)
             (find-type-from-full-name (symbol-to-clr-type-name arg)))))
+
+(defun get-namespace-package (namespace)
+  "Given a CLR namespace name, return the package that represents
+  it in Lisp. Note "
+  (let* ((pkg-name (concatenate 'string "CLR!" namespace))
+         (pkg (find-package pkg-name)))
+    (when (not pkg)
+      (setf pkg (make-package pkg-name))
+      ;(format t "~&New namespace package ~S." (package-name pkg))
+      (push pkg *namespace-packages*))
+    pkg))
 
 
 (defun clr-type-object-to-symbol (type-object)
@@ -59,10 +74,11 @@ namespace-qualified."
       (split-type-name type-name)
     (when namespace
       (setf namespaces (list namespace)))
-    (let ((type-symbol (loop
-                          for namespace in namespaces
-                          thereis (find-symbol simple-type-name
-                                               (get-namespace-package namespace)))))
+    (let ((type-symbol
+           (loop
+              for namespace in namespaces
+              thereis (find-symbol simple-type-name
+                                   (get-namespace-package namespace)))))
       (unless type-symbol
         (setf  type-symbol (clr-type-object-to-symbol
                             (find-type-from-name type-name namespaces))))
@@ -75,6 +91,10 @@ CLR type."
     (error "Expected a CLR object, got ~S." obj))
   (clr-type-object-to-symbol (invoke-member obj "GetType")))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Argument checking and conversion
+;;;
 (defun type-arg-to-type-object (arg)
   "Converts an argument value which is required to be a type
 designator to a type object. We accept a symbol, a CLR type
@@ -89,29 +109,18 @@ ARG-TO-TYPE-OBJECT, which accepts only a symbol."
   "Converts an argument value which might be a symbol designating
 a CLR type to the corresponding object. If ARG is not such a
 symbol, returns NIL."
-  (when (symbolp arg)
+  (when (and (not (eq arg t)) (symbolp arg))
     (symbol-to-clr-type-object arg)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Invocation functions that use symbols to denote types.
+;;;
 (defun new (type &rest args)
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
   (apply #'invoke-new (type-arg-to-type-object type) args))
-
-(defun list-to-clr-array (list &optional (base-type *system-object-type*))
-  "Creates and returns a CLR array of base type BASE-TYPE (a
-CLR-OBJECT, type name string, or symbol representing a CLR type)
-and rank 1 with the elements from the Lisp list LIST. BASE-TYPE
-defaults to System.Object."
-  (check-type list list)
-  (setf base-type (type-arg-to-type-object base-type))
-  (let ((array (new *system-array-type* base-type (length list))))
-    (loop
-       for item in list
-       for i from 0
-       do
-         (setf (aref* array i) item))
-    array))
 
 (defun invoke-member (object member-name &rest args)
   (let ((type (arg-to-type-object object)))
@@ -125,17 +134,10 @@ defaults to System.Object."
       (apply #'set-static new-value type member-name indexes)
       (apply #'set-instance new-value object member-name indexes))))
 
-(defun get-namespace-package (namespace)
-  "Given a CLR namespace name, return the package that represents
-  it in Lisp. Note "
-  (let* ((pkg-name (concatenate 'string "CLR!" namespace))
-         (pkg (find-package pkg-name)))
-    (when (not pkg)
-      (setf pkg (make-package pkg-name))
-      ;(format t "~&New namespace package ~S." (package-name pkg))
-      (push pkg *namespace-packages*))
-    pkg))
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Member symbols
+;;;
 (defun bind-member-symbol (member-symbol &optional member-name)
   "Makes a symbol usable as a CLR member designator. Returns the
 symbol. Unless member-name is supplied, the symbol's name must be

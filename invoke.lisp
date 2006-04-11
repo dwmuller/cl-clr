@@ -77,6 +77,49 @@ that determines how members are selected.")
 type lookups.")
   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Basic array reading functions
+;;;
+
+(defun aref* (array index)
+  "Return the element at offset INDEX in the CLR array object ARRAY."
+  (check-type array clr-object)
+  (check-type index integer)
+  (%handle-to-value (%signal-if-exception (%get-array-element array index))))
+
+(defun (setf aref*) (value array index)
+  (check-type array clr-object)
+  (check-type index integer)
+  (%signal-if-exception (%set-array-element array
+                                            index
+                                            (%value-to-handle value)))
+  value)
+
+(defmacro do-clr-array ((var init-form &optional result) &body body)
+  "INIT-FORM should evaluate to a CLR object of type ARRAY with a
+rank of one.  BODY will be evaluated with VAR bound to each
+element of this array in turn.  Finally, the result of evaluating
+the form RESULT is returned."
+  (let ((array (gensym)))
+    `(let ((,array ,init-form))
+       (check-type ,array clr-object)
+       (loop
+          for i from 0 below (invoke-instance ,array "Length")
+          for ,var = (%handle-to-value
+                      (%signal-if-exception (%get-array-element ,array i)))
+          do (progn ,@body)
+          finally return ,result))))
+
+(defun clr-array-to-list (array)
+  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
+same elements."
+  (check-type array clr-object)
+  (loop
+     for i from 0 below (invoke-instance array "Length")
+     collecting (%handle-to-value
+                 (%signal-if-exception (%get-array-element array i)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 #|
 (defclass clr-ref ()
   ((value :initarg :value
@@ -123,43 +166,59 @@ is not a CLR-OBJECT, it is simply returned."
 reliably for built-in runtime system types.."
   (%make-clr-object (%signal-if-exception (%get-system-type name))))
 
-(defmacro do-clr-array ((var init-form &optional result) &body body)
-  "INIT-FORM should evaluate to a CLR object of type ARRAY with a
-rank of one.  BODY will be evaluated with VAR bound to each
-element of this array in turn.  Finally, the result of evaluating
-the form RESULT is returned."
-  (let ((array (gensym)))
-    `(let ((,array ,init-form))
-       (check-type ,array clr-object)
-       (loop
-          for i from 0 below (invoke-instance ,array "Length")
-          for ,var = (%handle-to-value
-                      (%signal-if-exception (%get-array-element ,array i)))
-          do (progn ,@body)
-          finally return ,result))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; The root of most invocation evils:
+;;;
 
-(defun clr-array-to-list (array)
-  "Converts a CLR array ARRAY of rank 1 to a Lisp list with the
-same elements."
-  (check-type array clr-object)
-  (loop
-     for i from 0 below (invoke-instance array "Length")
-     collecting (%handle-to-value
-                 (%signal-if-exception (%get-array-element array i)))))
+(defun %generic-invoke-member (type member-name flags object args
+                               &key (binder *lisp-binder*))
+  "A generic member invocation function based on
+System.Type.InvokeMember. Works with the CommonLispReflection DLL
+to manage the translation of void return types and thrown
+exceptions. TYPE, OBJECT, and BINDER can be NIL and will be
+converted to handles.  TYPE and OBJECT must not both be NIL. ARGS
+is expected to be a handle of a CLR array, or NIL. Returns a value,
+not a handle."
+  (assert (or type object) (type object))
+  ;; Be careful here. One of the values that can be returned by
+  ;; %invoke-member is a singleton handle to denote the void
+  ;; return. This value must not be wrapped, otherwise we'll release
+  ;; it, invalidating the handle. Besides, it would be a waste of
+  ;; resources. Similar comments apply to an exception return handle
+  ;; -- no point in wrapping it as a CLR-OBJECT, since we're only
+  ;; interested in the exception that it contains.
+  (let* ((result (%invoke-member (%value-to-handle type)
+                                 member-name
+                                 flags
+                                 (%value-to-handle binder)
+                                 (%value-to-handle object)
+                                 (or args (make-pointer 0)))))
+    (%signal-if-exception result)
+    (when (%is-void-return result)
+      (return-from %generic-invoke-member (values)))
+    (%handle-to-value result)))
 
-(defun aref* (array index)
-  "Return the element at offset INDEX in the CLR array object ARRAY."
-  (check-type array clr-object)
-  (check-type index integer)
-  (%handle-to-value (%signal-if-exception (%get-array-element array index))))
-
-(defun (setf aref*) (array index value)
-  (check-type array clr-object)
-  (check-type index integer)
-  (%signal-if-exception (%set-array-element array
-                                            index
-                                            (%value-to-handle value)))
-  value)
+(defun %make-args-array (args &optional (size (length args)))
+  "Creates a System.Array of rank 1 with element type
+System.Object, copies the elements of the list ARGS into the
+beginning of the array, and returns the array's handle. The array
+length is SIZE, which defaults to (LENGTH ARGS) and must be at
+least that large. This is used to build argument lists for
+invocations."
+  (let ((array (%signal-if-exception (%make-array size *system-object-type*))))
+    (loop
+       for arg in args
+       for i upfrom 0  
+       do (%signal-if-exception
+           (cond
+             ((typep arg 'clr-object)
+              (%signal-if-exception (%set-array-element array i arg)))
+             (t (%with-clr-handle (handle (%value-to-handle arg))
+                  (%signal-if-exception (%set-array-element array
+                                                            i
+                                                            handle)))))))
+    array))
 
 (defun invoke-static (type member-name &rest args)
   "Invokes or retrieves the value of the static member designated
@@ -168,7 +227,7 @@ an object derived from System.Type.  If the member is a property,
 the ARGS are its indexes. If the member is a method, ARGS are the
 arguments. If the member is a field, there must be no optional
 arguments."
-  (%with-clr-handle (args-array (%make-args-array args (length args)))
+  (%with-clr-handle (args-array (%make-args-array args))
     (%generic-invoke-member type
                             member-name
                             *static-member-binding-flags*
@@ -181,7 +240,7 @@ designated by MEMBER-NAME and OBJECT. OBJECT must be a
 CLR-OBJECT.  If the member is a property, the ARGS are its
 indexes. If the member is a method, ARGS are the arguments. If
 the member is a field, there must be no optional arguments."
-  (%with-clr-handle (args-array (%make-args-array args (length args)))
+  (%with-clr-handle (args-array (%make-args-array args))
     (%generic-invoke-member nil
                             member-name
                             *instance-member-binding-flags*
@@ -232,7 +291,7 @@ arguments."
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
-  (%with-clr-handle (args-array (%make-args-array args (length args)))
+  (%with-clr-handle (args-array (%make-args-array args))
     (%generic-invoke-member type
                             ".ctor"
                             *create-instance-binding-flags*
@@ -265,13 +324,6 @@ namespace-qualified name string of a CLR type."
            args)))
 |#
 
-(defun as-var-args (seq)
-  (%handle-to-value
-   (%signal-if-exception
-    (%wrap-varargs-array (if (typep seq 'clr-object)
-                             seq
-                             (list-to-clr-array seq))))))
-      
 ;; This method determines how CLR exceptions are printed.
 (defmethod print-object ((x clr-exception) stream)
   (if *print-escape*

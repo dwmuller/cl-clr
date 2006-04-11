@@ -78,11 +78,12 @@ clr_handle get_system_type(const char* name)
         return MakeExceptionReturnHandle(e);
     }
 }
-clr_handle make_object_array(int n)
+clr_handle make_array(int n, clr_handle element_type_handle)
 {
     try
     {
-        return GetHandleFromObject(gcnew array<Object^>(n));
+        Type^ element_type = safe_cast<Type^>(GetObjectFromHandle(element_type_handle));
+        return GetHandleFromObject(Array::CreateInstance(element_type, n));
     }
     catch (Exception^ e)
     {
@@ -270,12 +271,12 @@ int is_void_return(clr_handle v_handle)
     return GetObjectFromHandle(v_handle) == VoidReturn::Instance;
 }
 
-clr_handle wrap_varargs_array(clr_handle args)
+clr_handle wrap_varargs_array(clr_handle args_handle)
 {
     try
     {
-        Array^ args_array = safe_cast<Array^>(GetObjectFromHandle(args));
-        return GetHandleFromObject(VarArgsBase::Wrap(args_array));
+        Array^ args = safe_cast<Array^>(GetObjectFromHandle(args_handle));
+        return GetHandleFromObject(VarArgs::Wrap(args));
     }
     catch (Exception^ e)
     {

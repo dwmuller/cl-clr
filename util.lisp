@@ -7,7 +7,45 @@
 
 (enable-clr-syntax)
 (use-namespaces "System"
-                "System.Reflection")
+                "System.Reflection"
+                "SpookyDistance.CommonLispReflection")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Array creation
+
+(defun list-to-clr-array (list &key (element-type *system-object-type*))
+  "Creates and returns a CLR array of rank 1 with element type
+ELEMENT-TYPE (a CLR-OBJECT, type name string, or symbol
+representing a CLR type) with the elements from the Lisp list
+LIST. BASE-TYPE defaults to System.Object."
+  (check-type list sequence)
+  (setf element-type (type-arg-to-type-object element-type))
+  (let ((array (?.CreateInstance '?Array
+                                 (type-arg-to-type-object element-type)
+                                 (length list))))
+    (loop
+       for item in list
+       for i from 0
+       do
+         (setf (aref* array i) item))
+    array))
+
+(defun as-var-args (seq &key (element-type *system-object-type*))
+  "Takes a list or a System.Array object of rank 1 and wraps it
+in an object that will match a method's final parameter if it has
+the ParamArray attribute. This is used in cases where you have a
+variable list of arguments that are more conveniently treated as
+a prebuilt sequence. In CL-CLR, this is the only object that will
+directly match such a parameter, unlike C# which will implicitly
+match an array argument. The ELEMENT-TYPE keyword is only used if
+SEQ is a list, and defaults to System.Object. "
+  (%handle-to-value
+   (%signal-if-exception
+    (%wrap-varargs-array
+     (etypecase seq
+       (list (list-to-clr-array seq :element-type element-type))
+       (clr-object seq))))))
 
 (defun print-members (type member-name)
   (let ((members-info
@@ -32,4 +70,4 @@
                           (?.AssemblyQualifiedName type-object)
                           (?.FullName type-object)))))))
 
-(bind-clr-symbols t)
+(bind-clr-symbols)

@@ -1,7 +1,7 @@
 (in-package :cl-clr.tests)
 
-(defun test-all ()
+(deftest all ()
   (check
-    (test-value-types)
-    (test-member-access)
-    (test-member-selection)))
+    (value-types)
+    (member-access)
+    (member-selection)))

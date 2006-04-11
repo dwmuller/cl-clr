@@ -53,13 +53,13 @@ extern "C" {
     // In order to use invoke_member, we need a few functions to mark
     // input arguments in various ways and to interpret returned results.
 
-    // Make an object array. The primary use for this is in preparing argument
+    // Make an array. The primary use for this is in preparing argument
     // arrays for invoke_member. The following three functions are used to
     // efficiently manipulate the array contents, and will work with any
-    // System.Array object. Note that set_array_element() normally return
+    // System.Array object. Note that set_array_element() normally returns
     // zero, unless an exception is thrown, in which case see
     // returned_exception().
-    _declspec(dllexport) clr_handle make_object_array(int n);
+    _declspec(dllexport) clr_handle make_array(int n, clr_handle element_type_handle);
     _declspec(dllexport) clr_handle get_array_element(clr_handle arry, int index);
     _declspec(dllexport) clr_handle set_array_element(clr_handle arry, int index, clr_handle obj);
 
@@ -92,7 +92,7 @@ extern "C" {
     // last argument is to be treated as an array of optional parameters, or
     // as a single optional parameter. Using this wrapper makes the former
     // usage explicit; the latter usage is always used otherwise.
-    _declspec(dllexport) clr_handle wrap_varargs_array(clr_handle args);
+    _declspec(dllexport) clr_handle wrap_varargs_array(clr_handle args_handle);
 
     // Take the name of a type, and return the type code. This may only work
     // for system type names. Returns -1 on error. See

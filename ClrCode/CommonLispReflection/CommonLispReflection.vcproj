@@ -198,6 +198,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\DllInterface.h"
+				>
+			</File>
+			<File
+				RelativePath=".\resource.h"
+				>
+			</File>
+			<File
 				RelativePath=".\Stdafx.cpp"
 				>
 				<FileConfiguration
@@ -216,20 +224,6 @@
 						UsePrecompiledHeader="1"
 					/>
 				</FileConfiguration>
-			</File>
-		</Filter>
-		<Filter
-			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl;inc;xsd"
-			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
-			>
-			<File
-				RelativePath=".\DllInterface.h"
-				>
-			</File>
-			<File
-				RelativePath=".\resource.h"
-				>
 			</File>
 			<File
 				RelativePath=".\Stdafx.h"
