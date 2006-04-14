@@ -11,11 +11,10 @@ TYPE is a CLR type designator (a symbol, string, or System.Type
 object) for a type derived from System.Enum. NAME can be a symbol
 or a string denoting a static field of that Enum type, or an
 integer."
-  (%handle-to-value
-   (%signal-if-exception (%enum-value (type-arg-to-type-object type)
-                                      (etypecase name
-                                        (symbol (get name 'clr-member))
-                                        (string name))))))
+  (%handle-to-value (%enum-value (type-arg-to-type-object type)
+                                 (etypecase name
+                                   (symbol (get name 'clr-member))
+                                   (string name)))))
 
 (defun or-enum-values (type &rest args)
   "Fetch and combine several enumeration values using

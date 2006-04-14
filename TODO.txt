@@ -1,6 +1,8 @@
-Update make-zip.cmd.
 
-Add support for callbacks into Lisp. Needed for the D3D examples.
+Integrate callbacks into automatic argument conversion. Add unit tests
+for callbacks. Test D3D examples.
+
+Update make-zip.cmd.
 
 Test events. Using add_EventName and remove_EventName should work
 fine.

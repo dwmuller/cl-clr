@@ -11,7 +11,6 @@
   (:export :aref*
            :as-var-args
            :bind-namespace
-           :box
            :clr-array-to-list
            :clr-object
            :clr-object-p
@@ -32,13 +31,15 @@
            :print-types
            :ref
            :shutdown-clr
-           :unbox
 
            ;; Related to the alternative reader:
            :enable-clr-syntax
            :use-namespace
            :use-namespaces
            :bind-clr-symbols
+
+           ;; For debugging and metrics:
+           :unwrapped-handle-count
            
            ;; RDNZL symbols that we might like to re-implement
 ;;            :cast

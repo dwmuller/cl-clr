@@ -21,12 +21,15 @@ namespace SpookyDistance
         Object^ value;
     };
 
+    int n_outstanding_handles = 0;
+
     // This is used internally to convert an object into a handle that we can
     // safely give to the Lisp system.
     static inline clr_handle GetHandleFromObject(Object^ object)
     {
         if (object == nullptr)
             return 0;
+        ++n_outstanding_handles;
         return GCHandle::ToIntPtr(GCHandle::Alloc(object)).ToPointer();
     }
 
@@ -52,6 +55,33 @@ namespace SpookyDistance
     {
         return GetHandleFromObject(gcnew ExceptionReturn(e));
     }
+
+    delegate Object^ ForeignCallbackDelegate(array<Object^>^ args);
+
+    ref class ForeignCallback
+    {
+        int identifier;
+        foreign_callback *callback;
+        release_callback *release;
+    public:
+        ~ForeignCallback()
+        {
+            release(identifier);
+        }
+        ForeignCallback(int id, foreign_callback* cb, release_callback* rel)
+        {
+            identifier = id;
+            callback = cb;
+            release = rel;
+        }
+        Object^ Invoke(... array<Object^>^ args)
+        {
+            clr_handle args_handle = GetHandleFromObject(args);
+            clr_handle result = callback(identifier, args->Length, args_handle);
+            release_object_handle(args_handle);
+            return GetObjectFromHandle(result);
+        }
+    };
 }
 using namespace SpookyDistance;
 
@@ -128,13 +158,18 @@ clr_handle enum_value(clr_handle type_handle, const char* name)
     }
 }
 // The foreign client system calls this to free an object for garbage collection.
- void release_object_handle(clr_handle handle)
+void release_object_handle(clr_handle handle)
 {
-    // Don't release a persistent singleton handle! (In release
-    // builds, we don't want to pay the overhead of this check.)
-    assert(!is_void_return(handle));
     if (handle)
+    {
+        --n_outstanding_handles;
         ((GCHandle)IntPtr(handle)).Free();
+    }
+}
+
+int number_of_unreleased_handles()
+{
+    return n_outstanding_handles;
 }
 
 int type_type_code(const char* type_name)
@@ -200,17 +235,49 @@ clr_handle invoke_member(clr_handle type_handle,
     }
 }
 //////////////////////////////////////////////////////////////////////////////
+// Callbacks
+
+clr_handle make_callback_delegate(int id, foreign_callback* callback, release_callback* release)
+{
+    try
+    {
+        return GetHandleFromObject(
+            gcnew ForeignCallbackDelegate(gcnew ForeignCallback(id, callback, release),
+            &ForeignCallback::Invoke));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+
+clr_handle invoke_callback_delegate(clr_handle callback_handle, clr_handle args_handle)
+{
+    try
+    {
+        Object^ callback_object = GetObjectFromHandle(callback_handle);
+        ForeignCallbackDelegate^ callback_delegate = safe_cast<ForeignCallbackDelegate^>(callback_object);
+        Object^ args_object = GetObjectFromHandle(args_handle);
+        array<Object^>^ args = safe_cast<array<Object^>^>(args_object);
+        return GetHandleFromObject(callback_delegate(args));
+    }
+    catch (Exception^ e)
+    {
+        return MakeExceptionReturnHandle(e);
+    }
+}
+//////////////////////////////////////////////////////////////////////////////
 // Boxing functions
 
 #define DEF_BOX(name, c_type) \
     clr_handle box_##name(c_type value) \
-    { \
-        return GetHandleFromObject(safe_cast<System::name^>(value)); \
-    } \
+{ \
+    return GetHandleFromObject(safe_cast<System::name^>(value)); \
+} \
     c_type unbox_##name(clr_handle handle) \
-    { \
-        return safe_cast<c_type>(GetObjectFromHandle(handle)); \
-    }
+{ \
+    return safe_cast<c_type>(GetObjectFromHandle(handle)); \
+}
 
 DEF_BOX(Byte,    unsigned char);
 DEF_BOX(Int16,   short);

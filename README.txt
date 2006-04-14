@@ -2,7 +2,8 @@ $Id$
 
 Copyright (c) 2006, Dan Muller. See accompanying LICENSE.txt file.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 Introduction
 
 CL-CLR is a package that facilitates interaction between Common Lisp
@@ -90,7 +91,8 @@ conveniently, and provides both incremental definition of symbols and
 type name resolution against a used namespace list. See that file for
 details.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 Prerequisites
 
 CL-CLR uses CFFI for all interaction between Lisp and the CLR.
@@ -98,7 +100,7 @@ CL-CLR uses CFFI for all interaction between Lisp and the CLR.
 At the moment, some additional key functionality is implemented only
 for LispWorks. (Specifically, freeing of CLR handles.)
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Installation
 
 Currently, you need to put the files CommonLispReflection.dll and
@@ -116,7 +118,7 @@ run the unit tests, and should be located in the same place as the
 other DLLs. You must have DirectX 9.x installed in order to run the
 examples.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Parameter binding
 
 Parameter binding is involved in the process of selecting a member
@@ -161,7 +163,7 @@ Like C#, we allow an array type with element type S to be implicitly
 treated as an array with element type T, provided both arrays have the
 same number of dimensions and S derives from or implements T.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 The alternative reader syntax.
 
 You initiate the reader syntax by a call to USE-NAMESPACES, e.g.
@@ -222,7 +224,7 @@ like functions or accessors, regardless of whether they are static or
 per-instance. To access static members, a type-symbol stands in the
 place where an object instance would otherwise be given.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CLR Struct types
 
 You must be very careful when working with struct types. They behave
@@ -258,8 +260,7 @@ can cause problems. It's a headache for all CLR programmers, but
 CL-CLR's dynamic method of interacting with objects can exacerbate the
 problems.
 
-----------------------------------------------------------------------------
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Reader Dependence
 
 Be aware that if you use the reader syntax, you won't, in general, be
@@ -269,8 +270,23 @@ development environment that allows you to evaluate a fragment of code
 from a file. The CLR symbols will be mis-interpreted as symbols that
 actually start with a question mark, causing run-time errors.
 
-----------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+Circular memory references
 
+It is possible to set up circular references between Lisp objects and
+CLR objects. Since the references to CLR objects in Lisp are GCHandles
+which prevent garbage collection of the objects, these objects won't
+be garbage collected by either Lisp or the CLR.
+
+Currently the only way this can happen in CL-CLR is when using
+delegates.  This is very easy to do in forms programming, for
+instance. If the delegate is a closure that references the CLR object
+that holds the delegate, you're stuck.
+
+You should be able to work around this fairly easily using
+System.WeakReference, documented in the MSDN.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Motivations for this project.
 
 This project started as an attempt to provide a layer on Edi Weitz's

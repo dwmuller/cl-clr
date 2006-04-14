@@ -35,17 +35,15 @@ LIST. BASE-TYPE defaults to System.Object."
   "Takes a list or a System.Array object of rank 1 and wraps it
 in an object that will match a method's final parameter if it has
 the ParamArray attribute. This is used in cases where you have a
-variable list of arguments that are more conveniently treated as
+variable list of arguments that are more conveniently provided as
 a prebuilt sequence. In CL-CLR, this is the only object that will
 directly match such a parameter, unlike C# which will implicitly
 match an array argument. The ELEMENT-TYPE keyword is only used if
 SEQ is a list, and defaults to System.Object. "
-  (%handle-to-value
-   (%signal-if-exception
-    (%wrap-varargs-array
-     (etypecase seq
-       (list (list-to-clr-array seq :element-type element-type))
-       (clr-object seq))))))
+  (%handle-to-value (%wrap-varargs-array
+                     (etypecase seq
+                       (list (list-to-clr-array seq :element-type element-type))
+                       (clr-object seq)))))
 
 (defun print-members (type member-name)
   (let ((members-info

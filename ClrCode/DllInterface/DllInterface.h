@@ -21,6 +21,9 @@ extern "C" {
     // released.
     _declspec(dllexport) void release_object_handle(clr_handle handle);
 
+    // To assist with debugging and measurement, this function returns
+    // the number of allocated-but-unrelease handles.
+    _declspec(dllexport) int number_of_unreleased_handles();
 
     // invoke_member calls System.Type.InvokeMember. It can invoke a method,
     // retrieve a property value, or retrieve a field value. The arguments are
@@ -102,6 +105,34 @@ extern "C" {
     // Take an object, and return its type's type code. Returns -1 on error.
     _declspec(dllexport) int object_type_code(clr_handle object_handle);
 
+    /////////////////////////////////////////////////////////////////////////
+    // Callbacks
+
+    // Prototype of callback functions. The identifier is the one given
+    // make_callback_delegate(), and args_handle is the handle of a
+    // System.Array of System.Object. The caller is responsible for releasing
+    // the handle when the callback returns; the callback function must not
+    // keep a reference to the array. The argument count is provided to spare
+    // the callback the need to call back into the CLR for the array length.
+    typedef clr_handle (foreign_callback)(int id, int n_args, clr_handle args_handle);
+
+    // Prototype of a callback release function. This is called when a
+    // delegate is finalized. See make_callback_delegate().
+    typedef void (release_callback)(int id);
+
+    // Create a delegate that will call back to the given callback function.
+    // Whenever the delegate is invoked, the callback will be invoked with the
+    // given identifier. When the delegate is finalized, the release callback
+    // will be invoked with the identifier.
+    _declspec(dllexport) clr_handle make_callback_delegate(int id,
+                                                           foreign_callback* callback,
+                                                           release_callback* release);
+
+    // Invoke a delegate with the given arguments. The caller is responsible
+    // for releasing the argument array after the call. This is useful for testing.
+    _declspec(dllexport) clr_handle invoke_callback_delegate(clr_handle callback_handle,
+                                                             clr_handle args_handle);
+    /////////////////////////////////////////////////////////////////////////
     // Box various basic types as CLR reference objects.
     //
     // Would like to use stdint.h names here, but VS doesn't have that file.
