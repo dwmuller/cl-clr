@@ -31,6 +31,16 @@
       ,@(loop for f in forms collect `(unless ,f (setf ,result nil)))
       ,result)))
 
+(defun print-result (result form condition)
+  (format t "~:[FAIL~;pass~] ... ~A: ~S~@[~%    ~
+                  Error condition of type ~a signalled.~]~@[~%~
+                  ~<    ~@;~A~>~]~%"
+          result
+          *test-name*
+          form
+          (when condition (type-of condition))
+          condition))
+
 (defmacro report-result (form)
   "Report the results of a single test case. Called by 'check'."
   (let ((result (gensym))
@@ -41,12 +51,5 @@
            ;; Just in case form returns multiple values, make sure
            ;; that we return only one:
            (multiple-value-bind (,single-result) ,form ,single-result))
-       (format t "~:[FAIL~;pass~] ... ~A: ~S~@[~%    ~
-                  Error condition of type ~a signalled.~]~@[~%~
-                  ~<    ~@;~A~>~]~%"
-               ,result
-               *test-name*
-               ',form
-               (when ,condition (type-of ,condition))
-               ,condition)
+       (print-result ,result ',form ,condition)
        ,result)))

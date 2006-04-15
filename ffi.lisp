@@ -92,7 +92,7 @@ it releases the handle. Returns nothing."
 ;;; invoke.lisp, where better tools exist for retrieving information
 ;;; from the exception object.
 ;;;
-(define-condition clr-exception (error clr-object)
+(define-condition clr-exception (clr-object error)
   ()
   (:documentation "A condition raised to indicate that an
  exception was thrown by CLR code invoked via CL-CLR."))
@@ -244,62 +244,6 @@ handle refers to an exception-return object."
 ;;;
 ;;; Other FFI functions
 ;;;
-;;; We wrap all FFI functions, except the very primitive ones defined
-;;; earlier in this file, with Lisp code to box arguments and to test
-;;; return values for exception indicators.
-;;;
-
-(defun arg-to-handle (arg temp-stack)
-  (cond
-    ((typep arg 'clr-object) arg)
-    (t (let ((handle (%value-to-handle arg)))
-         (vector-push handle temp-stack)
-         handle))))
-
-;; TODO: This is probably a bad idea, because sometimes we want to
-;; handle straight, unwrapped handles in, and when calling general FFI
-;; functions we can't tell the difference between them and any other
-;; pointer. Although ARG-TO-HANDLE, above, probably *will* be useful.
-
-(defmacro define-ffi-function (name return-type &rest args)
-  "Using CFFI, define a foreign function that takes and/or
-returns CLR handles, and a companion Lisp function that takes
-care of boxing and unboxing the arguments."
-  (let ((c-name (first name))
-        (cffi-name (second name))
-        (lisp-name (third name))
-        
-        (arg-names (map 'list #'first args))
-        (handle-names (loop
-                         for arg in args
-                         when (eq (second arg) 'clr-handle)
-                         collect (first arg)))
-        (temp-stack (gensym)))
-                           
-    `(progn
-       (defcfun (,c-name ,cffi-name) ,return-type ,@args)
-       (defun ,lisp-name ,arg-names
-         (let ((,temp-stack
-                (make-array ,(length handle-names)
-                            :fill-pointer 0)))
-           (declare (dynamic-extent ,temp-stack))
-           (unwind-protect
-                (progn
-                  ,@(map 'list
-                         (lambda (name)
-                           `(setf ,name (arg-to-handle ,name ,temp-stack)))
-                         handle-names)
-                  ,(if (eq return-type 'clr-handle)
-                       `(%signal-if-exception (,cffi-name ,@arg-names))
-                       `(,cffi-name ,@arg-names)))
-             (loop
-                while (plusp (fill-pointer ,temp-stack))
-                do (%release-object-handle (vector-pop ,temp-stack)))))))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; Other FFI functions
-;;;
 
 (defctype clr-handle :pointer)
 
@@ -307,6 +251,9 @@ care of boxing and unboxing the arguments."
  '(:default "SpookyDistance.CommonLispReflection.DllInterface"))
 
 (defcfun "number_of_unreleased_handles" :int)
+
+(defcfun ("new_object_handle" %new-object-handle) clr-handle
+  (obj-handle clr-handle))
 
 (defcfun ("invoke_member" %invoke-member) clr-handle
   (type-handle clr-handle)
@@ -437,9 +384,15 @@ arguments as a single naked CLR handle of a System.Array. This
 allows for efficient internal callbacks."
   (when (>= index (fill-pointer *callback-array*))
     (bad-callback))
-  (%value-to-handle (funcall (aref *callback-array* index)
-                             n-args
-                             args-handle)))
+  ;; Be careful here. The caller will release the handle
+  ;; that we return. If a CLR-object is being returned,
+  ;; return a *duplicate* handle for it.
+  (let ((result (funcall (aref *callback-array* index)
+                         n-args
+                         args-handle)))
+    (if (typep result 'clr-object)
+        (%new-object-handle result)
+        (%value-to-handle result))))
 
 (defcallback %release-callback :void
     ((index :int))

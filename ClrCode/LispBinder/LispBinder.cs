@@ -852,41 +852,41 @@ namespace SpookyDistance.CommonLispReflection
                           object[] args)
         {
             int n_args = args.Length;
-            object[] new_args
-                = (n_args == parameters.Length) ? args : new object[parameters.Length];
             int n_required = parameters.Length;
+            object[] new_args = args;
             Type varying_args_type = VaryingParamsType(parameters);
+            VarArgs wrapped_varargs = null;
             if (varying_args_type != null)
+            {
                 --n_required;
-            Debug.Assert(n_args >= n_required);
+                wrapped_varargs = args[n_required] as VarArgs;
+                if (wrapped_varargs == null)
+                {
+                    // The method takes varying args, and we haven't been
+                    // given the varargs as a package, so the bound arguments
+                    // array will likely be a different length than the input
+                    // arguments array. "Likely" because if there's only one
+                    // vararg, the length is the same -- but there's still an
+                    // unwrapping operation that needs to be done after the call
+                    // in that case, and we use the new args array as an indicator
+                    // of this.
+                    new_args = new object[parameters.Length];
+                }
+            }
             for (int i = 0; i < n_required; ++i)
                 new_args[i] = ConvertTo(args[i], parameters[i].ParameterType);
             if (varying_args_type != null)
             {
-                if (n_required == n_args)
+                if (wrapped_varargs != null)
                 {
-                    // TODO: Is an empty array really necessary?
-                    new_args[n_required] = System.Array.CreateInstance(varying_args_type, 0);
+                    new_args[n_required] = wrapped_varargs.Args;
                 }
                 else
                 {
-                    VarArgs wrapped_varargs = args[n_required] as VarArgs;
-                    if (wrapped_varargs != null)
-                    {
-                        new_args[n_required] = wrapped_varargs.Args;
-                    }
-                    else
-                    {
-                        // TODO: Possible optimization: If only one optional
-                        // argument is present, we wouldn't need to allocate a
-                        // new args array. However, we'd have to give some other
-                        // indication to the caller that the last arg has to be
-                        // 'unwrapped' after an invocation.
-                        Array varargs = Array.CreateInstance(varying_args_type, n_args - n_required);
-                        new_args[n_required] = varargs;
-                        for (int i = 0; i < n_args - n_required; ++i)
-                            varargs.SetValue(ConvertTo(args[i + n_required], varying_args_type), i);
-                    }
+                    Array varargs = Array.CreateInstance(varying_args_type, n_args - n_required);
+                    new_args[n_required] = varargs;
+                    for (int i = 0; i < n_args - n_required; ++i)
+                        varargs.SetValue(ConvertTo(args[i + n_required], varying_args_type), i);
                 }
             }
             return new_args;

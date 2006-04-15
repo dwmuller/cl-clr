@@ -21,6 +21,12 @@ extern "C" {
     // released.
     _declspec(dllexport) void release_object_handle(clr_handle handle);
 
+    // There are rare situations in which it is important to create a
+    // duplicate handle for an object, e.g. when you know a receiver of a
+    // handle will free it but the caller isn't done with the object.
+    // This function gets a new handle for an object.
+    _declspec(dllexport) clr_handle new_object_handle(clr_handle obj);
+
     // To assist with debugging and measurement, this function returns
     // the number of allocated-but-unrelease handles.
     _declspec(dllexport) int number_of_unreleased_handles();

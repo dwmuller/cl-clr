@@ -1,15 +1,13 @@
-Callbacks not quite working. Creating a delegate of the correct type
-leads to binding problems. Can probably be worked around either using
-RDNZL's technique (haven't studied it yet) or using new methods for
-2.0.
+Made a change to the representation of CLR-CONDITIONS which I think
+causes them to not print correctly, via the PRINT-OBJECT method in
+invoke.lisp. Fix this if it's really borken.
 
-Integrate callbacks into new object creation. Add unit tests
-for callbacks. Test D3D examples.
+CL-CLR no longer accepts symbols anywhere in lieu of types. Fixing
+this may be a bit difficult. Blocking item for D3D examples et al.
+
+Test D3D examples.
 
 Update make-zip.cmd.
-
-Test events. Using add_EventName and remove_EventName should work
-fine.
 
 Test argument binding of floats and doubles, particularly when running
 with LispWorks.

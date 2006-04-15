@@ -65,7 +65,7 @@
        (on-create-device this device nil)
        t))
     (clr-exception (condition)
-      (print (?.ToString (exception-of condition)))
+      (print (?.ToString condition))
       nil)))
 
 (defmethod on-create-device ((this vertices) sender event-args)

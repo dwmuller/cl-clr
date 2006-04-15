@@ -47,6 +47,10 @@
              (?.MC1_Select obj1 1 "ArgA" "ArgB" "ArgC"))
       (equal "Selected 2 from (params object[]): ArgC"
              (?.MC1_Select obj1 2 "ArgA" "ArgB" "ArgC"))
+      (equal "Selected 1 from (params int[]): 2"
+             (?.MC1_Select obj1 1 1 2 3))
+      (equal "Selected 0 from (params int[]): 1"
+             (?.MC1_Select obj1 0 1))
       
       ;; Forced use of varying params, from list/array of Object:
       (equal "Selected 0 from (params object[]): ArgA"

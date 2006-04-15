@@ -43,6 +43,10 @@
                          #'(lambda () 36))))
        (eql (?.RaiseReturnIntFromNothing obj1) 36))
 
+    ;; Test ability to return ref-type objects from delegates.
+    ;; Also tests handle management when a delegate returns
+    ;; an object that has continued existence -- in this case,
+    ;; an object that was handed in as an argument.
     (let ((arg1 (new '?StringEncapsulator "A"))
           (arg2 (new '?StringEncapsulator "B")))
       (check
@@ -54,7 +58,8 @@
                                     ref_arg1
                                     ref_arg2)))))
         (equal "A" (?.ToString (?.RaiseReturnObjectFromArgs obj1 0 arg1 arg2)))
-        (equal "B" (?.ToString (?.RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))))
+        (equal "B" (?.ToString (?.RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))
+        (zerop (unwrapped-handle-count))))
     
     ;; TODO: Add negative tests, removal tests, multicasting tests.
     ))

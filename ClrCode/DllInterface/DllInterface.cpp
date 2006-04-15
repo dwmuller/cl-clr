@@ -75,16 +75,19 @@ namespace SpookyDistance
         }
         Object^ Invoke(array<Object^>^ args)
         {
-            clr_handle args_handle = GetHandleFromObject(args);
-            clr_handle result_handle = callback(identifier, args->Length, args_handle);
-            Object^ result = GetObjectFromHandle(result_handle);
-            release_object_handle(result_handle);
-            release_object_handle(args_handle);
-            return result;
-        }
-        void InvokeReturningVoid(... array<Object^>^ args)
-        {
-            Invoke(args);
+            clr_handle args_handle = 0;
+            clr_handle result_handle = 0;
+            try
+            {
+                args_handle = GetHandleFromObject(args);
+                result_handle = callback(identifier, args->Length, args_handle);
+                return GetObjectFromHandle(result_handle);
+            }
+            finally
+            {
+                release_object_handle(result_handle);
+                release_object_handle(args_handle);
+            }
         }
     };
 }
@@ -171,7 +174,10 @@ void release_object_handle(clr_handle handle)
         ((GCHandle)IntPtr(handle)).Free();
     }
 }
-
+clr_handle new_object_handle(clr_handle obj)
+{
+    return GetHandleFromObject(GetObjectFromHandle(obj));
+}
 int number_of_unreleased_handles()
 {
     return n_outstanding_handles;
