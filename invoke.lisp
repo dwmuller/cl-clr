@@ -150,13 +150,13 @@ an object derived from System.Type.  If the member is a property,
 the ARGS are its indexes. If the member is a method, ARGS are the
 arguments. If the member is a field, there must be no optional
 arguments."
-  (%with-clr-handle (args-array (%make-args-array args))
+  (%with-clr-handle (args-handle (%make-args-array args))
     (let ((result-handle (%invoke-member type
                                          member-name
                                          *static-member-binding-flags*
                                          *lisp-binder*
                                          nil
-                                         args-array)))
+                                         args-handle)))
       (%handle-to-value result-handle))))
 
 (defun invoke-instance (object member-name &rest args)
@@ -165,13 +165,14 @@ designated by MEMBER-NAME and OBJECT. OBJECT must be a
 CLR-OBJECT.  If the member is a property, the ARGS are its
 indexes. If the member is a method, ARGS are the arguments. If
 the member is a field, there must be no optional arguments."
-  (%with-clr-handle (args-array (%make-args-array args))
+  (%with-clr-handles* ((args-handle (%make-args-array args))
+                       (object-handle (%value-to-handle object)))
     (let ((result-handle (%invoke-member nil
                                          member-name
                                          *instance-member-binding-flags*
                                          *lisp-binder*
-                                         object
-                                         args-array)))
+                                         object-handle
+                                         args-handle)))
       (%handle-to-value result-handle))))
 
 (defun set-static (new-value type member-name &rest indexes)
@@ -180,11 +181,11 @@ TYPE to NEW-VALUE, and returns NEW-VALUE. TYPE must be a
 CLR-OBJECT referring to an object derived from System.Type.  If
 the member is a property, the INDEXES are its indexes. If the
 member is a field, there must be no optional arguments."
-  (%with-clr-handles* ((args-array (%make-args-array indexes
+  (%with-clr-handles* ((args-handle (%make-args-array indexes
                                                      (1+ (length indexes))))
                        (value-handle (%value-to-handle new-value)))
     ;; Tack the new value on the end of the args array.
-    (%handle-to-value (%set-array-element args-array
+    (%handle-to-value (%set-array-element args-handle
                                           (length indexes)
                                           value-handle))
     (let ((result-handle
@@ -193,7 +194,7 @@ member is a field, there must be no optional arguments."
                            *static-set-prop-or-field-binding-flags*
                            *lisp-binder*
                            nil
-                           args-array)))
+                           args-handle)))
       (%handle-to-value result-handle)))
   new-value)
 
@@ -203,11 +204,12 @@ OBJECT to NEW-VALUE, and returns NEW-VALUE. OBJECT must be a
 CLR-OBJECT.  If the member is a property, the INDEXES are its
 indexes. If the member is a field, there must be no optional
 arguments."
-  (%with-clr-handles* ((args-array (%make-args-array indexes
+  (%with-clr-handles* ((args-handle (%make-args-array indexes
                                                      (1+ (length indexes))))
+                       (object-handle (%value-to-handle object))
                        (value-handle (%value-to-handle new-value)))
     ;; Tack the new value on the end of the args array.
-    (%handle-to-value (%set-array-element args-array
+    (%handle-to-value (%set-array-element args-handle
                                           (length indexes)
                                           value-handle))
     (let ((result-handle
@@ -215,8 +217,8 @@ arguments."
                            member-name
                            *instance-set-prop-or-field-binding-flags*
                            *lisp-binder*
-                           object
-                           args-array)))
+                           object-handle
+                           args-handle)))
       (%handle-to-value result-handle)))
   new-value)
 
@@ -224,20 +226,20 @@ arguments."
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
-  (%with-clr-handle (args-array (%make-args-array args))
+  (%with-clr-handle (args-handle (%make-args-array args))
     (let ((result-handle
            (%invoke-member type
                            ".ctor"
                            *create-instance-binding-flags*
                            *lisp-binder*
                            nil
-                           args-array)))
+                           args-handle)))
       (%handle-to-value result-handle))))
 
-(defun invoke-callback-delegate (delegate &rest args)
+(defun invoke-delegate (delegate &rest args)
   "Invoke a callback delegate. Mainly for testing."
   (%with-clr-handle (args-handle (%make-args-array args))
-    (%handle-to-value (%invoke-callback delegate args-handle))))
+    (%handle-to-value (%invoke-delegate delegate args-handle))))
 
 #|
 (defmacro define-clr-call (lisp-name
@@ -265,12 +267,19 @@ namespace-qualified name string of a CLR type."
            args)))
 |#
 
+(defmethod describe-object ((obj clr-object) stream)
+  (format stream "~&~S is a CLR object of type ~A:~%  ~A~%"
+          obj
+          (invoke-instance obj "GetType")
+          (invoke-instance obj "ToString")))
+
 ;;; This method determines how CLR exceptions are printed.
 (defmethod print-object ((x clr-exception) stream)
   (if *print-escape*
       (call-next-method)
-      (format stream "~<A Common Language Runtime exception was thrown: ~_~A~:>"
-              (invoke-instance (exception-of x) "Message"))))
+      (format stream "~<A Common Language Runtime exception of type ~A was thrown: ~_~A~:>"
+              (invoke-instance (invoke-instance x "GetType") "ToString")
+              (invoke-instance x "Message"))))
 
 (defun init-invoke ()
   (setf

@@ -31,6 +31,9 @@
                  (:file "memory"
                         :depends-on ("packages"
                                      "pcl-unit-test-framework"))
+                 (:file "delegates"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"))
                  (:file "all"
                         :depends-on ("packages"
                                      "pcl-unit-test-framework"

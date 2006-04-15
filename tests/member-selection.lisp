@@ -14,11 +14,11 @@
          (int-list '(1 2))
          (int-array (list-to-clr-array int-list
                                        :element-type '?Int32))
-         (dclass-list (list (new '?TrivialDerivedClass1 "A")
-                            (new '?TrivialDerivedClass1 "B")))
+         (dclass-list (list (new '?StringEncapsulator "A")
+                            (new '?StringEncapsulator "B")))
          (dclass-array
           (list-to-clr-array dclass-list
-                             :element-type '?TrivialDerivedClass1)))
+                             :element-type '?StringEncapsulator)))
     
     (check
       (equal "Selected 0 from (string, string): ArgA"
@@ -70,19 +70,19 @@
       (equal "Selected 1 from (params int[]): 2"
              (?.MC1_Select obj1 1 (as-var-args int-array)))
 
-      ;; Forced use of varying params, from array of TrivialDerivedClass1.
-      ;; Tests conformance of array to ConcreteClass1[].
-      (equal "Selected 0 from (params ConcreteClass1[]): A"
+      ;; Forced use of varying params, from array of StringEncapsulator.
+      ;; Tests conformance of array to StringEncapsulator[].
+      (equal "Selected 0 from (params StringEncapsulator[]): A"
              (?.MC1_Select obj1 0
                            (as-var-args dclass-list
-                                        :element-type '?TrivialDerivedClass1)))
-      (equal "Selected 1 from (params ConcreteClass1[]): B"
+                                        :element-type '?StringEncapsulator)))
+      (equal "Selected 1 from (params StringEncapsulator[]): B"
              (?.MC1_Select obj1 1
                            (as-var-args dclass-list
-                                        :element-type '?TrivialDerivedClass1)))
-      (equal "Selected 0 from (params ConcreteClass1[]): A"
+                                        :element-type '?StringEncapsulator)))
+      (equal "Selected 0 from (params StringEncapsulator[]): A"
              (?.MC1_Select obj1 0 (as-var-args dclass-array)))
-      (equal "Selected 1 from (params ConcreteClass1[]): B"
+      (equal "Selected 1 from (params StringEncapsulator[]): B"
              (?.MC1_Select obj1 1 (as-var-args dclass-array)))
 
       ;; Test treatment of NIL and T as booleans.

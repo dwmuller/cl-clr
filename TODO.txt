@@ -1,5 +1,9 @@
+Callbacks not quite working. Creating a delegate of the correct type
+leads to binding problems. Can probably be worked around either using
+RDNZL's technique (haven't studied it yet) or using new methods for
+2.0.
 
-Integrate callbacks into automatic argument conversion. Add unit tests
+Integrate callbacks into new object creation. Add unit tests
 for callbacks. Test D3D examples.
 
 Update make-zip.cmd.

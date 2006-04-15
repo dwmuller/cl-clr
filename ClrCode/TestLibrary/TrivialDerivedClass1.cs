@@ -6,18 +6,5 @@ namespace SpookyDistance.CommonLispReflection.TestLibrary
     /// </summary>
     public class TrivialDerivedClass1 : ConcreteClass1
     {
-        string name;
-        public TrivialDerivedClass1()
-        {
-            name = "None";
-        }
-        public TrivialDerivedClass1(string name)
-        {
-            this.name = name;
-        }
-        public override string ToString()
-        {
-            return name;
-        }
     }
 }

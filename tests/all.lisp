@@ -5,5 +5,6 @@
     (value-types)
     (member-access)
     (member-selection)
-    (zerop (unwrapped-handle-count))))
+    (zerop (unwrapped-handle-count))
+    (delegates)))
 

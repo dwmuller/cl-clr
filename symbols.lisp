@@ -119,8 +119,12 @@ symbol, returns NIL."
 (defun new (type &rest args)
   "Make a new object of type indicated by TYPE, which must be a
 symbol designating a CLR type, a CLR type object, or a
-namespace-qualified name string of a CLR type."
-  (apply #'invoke-new (type-arg-to-type-object type) args))
+namespace-qualified name string of a CLR type. If TYPE designates
+a delegate type, then the only additional argument should be a
+Lisp function object."
+  (if (and (eql (length args) 1) (typep (first args) 'function))
+      (make-delegate (first args) (type-arg-to-type-object type))
+      (apply #'invoke-new (type-arg-to-type-object type) args)))
 
 (defun invoke-member (object member-name &rest args)
   (let ((type (arg-to-type-object object)))

@@ -92,8 +92,8 @@ it releases the handle. Returns nothing."
 ;;; invoke.lisp, where better tools exist for retrieving information
 ;;; from the exception object.
 ;;;
-(define-condition clr-exception (error)
-  ((exception :accessor exception-of :initarg :exception :type clr-object))
+(define-condition clr-exception (error clr-object)
+  ()
   (:documentation "A condition raised to indicate that an
  exception was thrown by CLR code invoked via CL-CLR."))
 
@@ -104,7 +104,7 @@ it releases the handle. Returns nothing."
   (let ((e (%returned-exception handle)))
     (unless (null-pointer-p e)
       (%release-object-handle handle)
-      (error (make-condition 'clr-exception :exception e))))
+      (error (make-condition 'clr-exception :handle e))))
   handle)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -178,7 +178,6 @@ can. Signals an error otherwise."
     (ratio        (%box-double (coerce value 'double-float)))
     (null         (make-pointer 0))
     (pathname     (%box-string (namestring value)))
-    (function     (%make-callback value))
     (otherwise    (if (eq value t)
                       (%box-boolean 1)
                       (error "Don't know how to convert ~S to a CLR-HANDLE."
@@ -352,11 +351,12 @@ care of boxing and unboxing the arguments."
 (defcfun ("make_callback_delegate" %make-callback-delegate) clr-handle
   (identifier :int)
   (foreign_callback :pointer)
-  (release_callback :pointer))
+  (release_callback :pointer)
+  (delegate-type clr-handle))
 
-(defcfun ("invoke_callback_delegate" %invoke-callback) clr-handle
-  (callback_handle clr-handle)
-  (args_handle clr-handle))
+(defcfun ("invoke_delegate" %invoke-delegate) clr-handle
+  (delegate-handle clr-handle)
+  (args clr-handle))
 
 (defcfun ("make_lisp_binder" %make-lisp-binder) clr-handle
   (allow-double-narrowing :boolean))
@@ -429,10 +429,6 @@ used to retrieve or unregister the callback."
                  collecting (%handle-to-value
                              (%get-array-element args-array i)))))))
 
-(defun unregister-clr-callback (index)
-  (setf (aref *callback-array* index) #'bad-callback)
-  (values))
-
 (defcallback %callback-proxy clr-handle
     ((index :int) (n-args :int) (args-handle clr-handle))
   "A callback function proxy. Index identifies the actual Lisp
@@ -441,29 +437,21 @@ arguments as a single naked CLR handle of a System.Array. This
 allows for efficient internal callbacks."
   (when (>= index (fill-pointer *callback-array*))
     (bad-callback))
-  (let ((result
-         (multiple-value-list (funcall (aref *callback-array* index)
-                                       n-args
-                                       args-handle))))
-    (case (length result)
-      (0 (error "Need a way to get the void object!"))
-      (1 (%value-to-handle (car result)))
-      (t (error "Need a way to return multiple values!")))))
+  (%value-to-handle (funcall (aref *callback-array* index)
+                             n-args
+                             args-handle)))
 
 (defcallback %release-callback :void
     ((index :int))
-  (unregister-clr-callback index))
+  (setf (aref *callback-array* index) #'bad-callback)
+  (values))
 
-(defun %make-callback (fun)
-  (%make-callback-delegate (%register-callback fun)
-                           (callback %callback-proxy)
-                           (callback %release-callback)))
-
-(defun make-callback-delegate (fun)
+(defun make-delegate (fun type)
   (%handle-to-value
    (%make-callback-delegate (register-clr-callback fun)
                             (callback %callback-proxy)
-                            (callback %release-callback))))
+                            (callback %release-callback)
+                            type)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Miscellany

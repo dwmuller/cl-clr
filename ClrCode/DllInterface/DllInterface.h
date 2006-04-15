@@ -126,12 +126,13 @@ extern "C" {
     // will be invoked with the identifier.
     _declspec(dllexport) clr_handle make_callback_delegate(int id,
                                                            foreign_callback* callback,
-                                                           release_callback* release);
+                                                           release_callback* release,
+                                                           clr_handle delegate_type_handle);
 
     // Invoke a delegate with the given arguments. The caller is responsible
     // for releasing the argument array after the call. This is useful for testing.
-    _declspec(dllexport) clr_handle invoke_callback_delegate(clr_handle callback_handle,
-                                                             clr_handle args_handle);
+    _declspec(dllexport) clr_handle invoke_delegate(clr_handle callback_handle,
+                                                    clr_handle args_handle);
     /////////////////////////////////////////////////////////////////////////
     // Box various basic types as CLR reference objects.
     //

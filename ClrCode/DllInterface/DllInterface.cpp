@@ -9,6 +9,7 @@
 
 using namespace System;
 using namespace System::Reflection;
+using namespace System::Reflection::Emit;
 using namespace System::Runtime::InteropServices;
 using namespace SpookyDistance::CommonLispReflection;
 
@@ -56,8 +57,6 @@ namespace SpookyDistance
         return GetHandleFromObject(gcnew ExceptionReturn(e));
     }
 
-    delegate Object^ ForeignCallbackDelegate(array<Object^>^ args);
-
     ref class ForeignCallback
     {
         int identifier;
@@ -74,12 +73,18 @@ namespace SpookyDistance
             callback = cb;
             release = rel;
         }
-        Object^ Invoke(... array<Object^>^ args)
+        Object^ Invoke(array<Object^>^ args)
         {
             clr_handle args_handle = GetHandleFromObject(args);
-            clr_handle result = callback(identifier, args->Length, args_handle);
+            clr_handle result_handle = callback(identifier, args->Length, args_handle);
+            Object^ result = GetObjectFromHandle(result_handle);
+            release_object_handle(result_handle);
             release_object_handle(args_handle);
-            return GetObjectFromHandle(result);
+            return result;
+        }
+        void InvokeReturningVoid(... array<Object^>^ args)
+        {
+            Invoke(args);
         }
     };
 }
@@ -237,13 +242,100 @@ clr_handle invoke_member(clr_handle type_handle,
 //////////////////////////////////////////////////////////////////////////////
 // Callbacks
 
-clr_handle make_callback_delegate(int id, foreign_callback* callback, release_callback* release)
+clr_handle make_callback_delegate(int id,
+                                  foreign_callback* callback,
+                                  release_callback* release,
+                                  clr_handle delegate_type_handle)
 {
+    // We create the delegate as a dynamic method. A delegate created this way
+    // is a static method. It takes as arguments: First, the instance to which the
+    // delegate is bound; then, the aguments dictated by the delegate type.
+    //
+    // What our delegate actually does is copy the delegate arguments (but not the
+    // bound object instance) to an array of objects. The instance that we bind
+    // the delegate to is of type ForeignCallback, which acts as intermediary to
+    // the C-style callback function. ForeignCallback.Invoke takes the argument
+    // array as its sole argument, and invokes the callback.
+    //
+    // ForeignCallback also has a finalizer that lets the foreign system know when
+    // the callback is no longer needed.
+    //
     try
     {
-        return GetHandleFromObject(
-            gcnew ForeignCallbackDelegate(gcnew ForeignCallback(id, callback, release),
-            &ForeignCallback::Invoke));
+        Type^ type = safe_cast<Type^>(GetObjectFromHandle(delegate_type_handle));
+        ForeignCallback^ fobj = gcnew ForeignCallback(id, callback, release);
+
+        MethodInfo^ invoke_method = type->GetMethod("Invoke");
+        Type^ return_type = invoke_method->ReturnType;
+        array<ParameterInfo^>^ parameter_infos = invoke_method->GetParameters();
+        array<Type^>^ parameter_types = gcnew array<Type^>(parameter_infos->Length + 1);
+        for (int i = parameter_infos->Length; i > 0; --i)
+            parameter_types[i] = parameter_infos[i-1]->ParameterType;
+        parameter_types[0] = ForeignCallback::typeid;
+
+        DynamicMethod^ delegate_method = gcnew DynamicMethod("Dynamic_CL_CLR_Delegate",
+                                                             return_type,
+                                                             parameter_types,
+                                                             ForeignCallback::typeid->Module);
+        ILGenerator^ gen = delegate_method->GetILGenerator(256);
+        LocalBuilder^ array_local = gen->DeclareLocal(array<Object^>::typeid);
+
+        // The goal is to take all arguments and pass them in an array to
+        // ForeignCallback.Invoke, called on the specific ForeignCallback
+        // object that we just created.
+        gen->Emit(OpCodes::Ldc_I4, parameter_infos->Length);
+        gen->Emit(OpCodes::Newarr, Object::typeid);
+        // Save the array reference in a local variable.
+        gen->Emit(OpCodes::Stloc, array_local);
+
+        for (int i = 0; i < parameter_infos->Length; ++i)
+        {
+            // Note that the first arg to this routine is the instance ref,
+            // other args start at offset 1.
+            ParameterInfo^ param = parameter_infos[i];
+
+            // Push the array ref, index and value
+            gen->Emit(OpCodes::Ldloc, array_local);
+            gen->Emit(OpCodes::Ldc_I4, i);
+            gen->Emit(OpCodes::Ldarg, i+1);
+            // If it's a value type, box it.
+            if (param->ParameterType->IsValueType)
+                gen->Emit(OpCodes::Box, parameter_infos[i]->ParameterType);
+            // store the value in the array
+            gen->Emit(OpCodes::Stelem_Ref);
+        }
+
+        // Call ForeignCallback.Invoke.
+        gen->Emit(OpCodes::Ldarg_0);            // Push object reference.
+        gen->Emit(OpCodes::Ldloc, array_local); // Push array reference.
+        MethodInfo^ callback_method = ForeignCallback::typeid->GetMethod("Invoke");
+        gen->Emit(OpCodes::Call, callback_method);
+
+        // Deal with the returned value, if any.
+        if (return_type == Void::typeid)
+            gen->Emit(OpCodes::Pop); // Discard return value
+        else
+        {
+            LocalBuilder^ local_result = gen->DeclareLocal(Object::typeid);
+            gen->Emit(OpCodes::Stloc, local_result);
+            gen->Emit(OpCodes::Ldloc, local_result);
+            if (return_type->IsValueType)
+            {
+
+                array<Type^>^ types = { Object::typeid, Type::typeid };
+                MethodInfo^ convert_method = Convert::typeid->GetMethod("ChangeType", types);
+                gen->Emit(OpCodes::Ldtoken, return_type);
+                gen->Emit(OpCodes::Call, Type::typeid->GetMethod("GetTypeFromHandle"));
+                gen->Emit(OpCodes::Call, convert_method);
+                gen->Emit(OpCodes::Unbox_Any, return_type);
+            }
+        }
+        gen->Emit(OpCodes::Ret);
+
+        // Wrap it up as a delegate bound to the ForeignCallback object.
+        Delegate^ result = delegate_method->CreateDelegate(type, fobj);
+
+        return GetHandleFromObject(result);
     }
     catch (Exception^ e)
     {
@@ -251,15 +343,17 @@ clr_handle make_callback_delegate(int id, foreign_callback* callback, release_ca
     }
 }
 
-clr_handle invoke_callback_delegate(clr_handle callback_handle, clr_handle args_handle)
+clr_handle invoke_delegate(clr_handle delegate_handle, clr_handle args_handle)
 {
     try
     {
-        Object^ callback_object = GetObjectFromHandle(callback_handle);
-        ForeignCallbackDelegate^ callback_delegate = safe_cast<ForeignCallbackDelegate^>(callback_object);
-        Object^ args_object = GetObjectFromHandle(args_handle);
-        array<Object^>^ args = safe_cast<array<Object^>^>(args_object);
-        return GetHandleFromObject(callback_delegate(args));
+        Delegate^ delegate = safe_cast<Delegate^>(GetObjectFromHandle(delegate_handle));
+        array<Object^>^ args = safe_cast<array<Object^>^>(GetObjectFromHandle(args_handle));
+        return GetHandleFromObject(delegate->DynamicInvoke(args));
+    }
+    catch (TargetInvocationException^ e)
+    {
+        return MakeExceptionReturnHandle(e->GetBaseException());
     }
     catch (Exception^ e)
     {

@@ -45,13 +45,15 @@ SEQ is a list, and defaults to System.Object. "
                        (list (list-to-clr-array seq :element-type element-type))
                        (clr-object seq)))))
 
-(defun print-members (type member-name)
+(defun print-members (type &optional member-name)
   (let ((members-info
-         (?.GetMember type
+         (if member-name
+             (?.GetMember (type-arg-to-type-object type)
                       member-name
                       (binding-flags "Static"
                                      "Public"
-                                     "FlattenHierarchy"))))
+                                     "FlattenHierarchy"))
+             (?.GetMembers (type-arg-to-type-object type)))))
     (do-clr-array (member-info members-info)
       (format t "~&~S: ~A ~A "
               (?.Name member-info)

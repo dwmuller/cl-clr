@@ -28,9 +28,9 @@ namespace SpookyDistance.CommonLispReflection.TestLibrary
         {
             return string.Format("Selected {0} from (params int[]): {1}", i, args[i]);
         }
-        public string MC1_Select(int i, params ConcreteClass1[] args)
+        public string MC1_Select(int i, params StringEncapsulator[] args)
         {
-            return string.Format("Selected {0} from (params ConcreteClass1[]): {1}", i, args[i]);
+            return string.Format("Selected {0} from (params StringEncapsulator[]): {1}", i, args[i]);
         }
         public bool MC2_Bool(bool b)
         {

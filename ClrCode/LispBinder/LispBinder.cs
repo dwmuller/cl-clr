@@ -344,9 +344,16 @@ namespace SpookyDistance.CommonLispReflection
             {
                 if (str.Length != 0)
                     str.Append("\n  ");
-                str.Append(arg.GetType().FullName);
-                str.Append(": ");
-                str.Append(arg.ToString());
+                if (arg == null)
+                {
+                    str.Append("null type: null");
+                }
+                else
+                {
+                    str.Append(arg.GetType().FullName);
+                    str.Append(": ");
+                    str.Append(arg.ToString());
+                }
             }
             return str.ToString();
         }

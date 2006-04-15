@@ -20,7 +20,6 @@
            :do-assemblies
            :do-clr-array
            :enum-value
-           :exception-of
            :import-type
            :init-clr
            :list-to-clr-array
