@@ -40,6 +40,8 @@
 
            ;; For debugging and metrics:
            :unwrapped-handle-count
+           :unreleased-handle-count
+           :uncollected-object-count
            
            ;; RDNZL symbols that we might like to re-implement
 ;;            :cast

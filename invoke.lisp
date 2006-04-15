@@ -121,29 +121,6 @@ same elements."
 reliably for built-in runtime system types.."
   (%handle-to-value (%get-system-type name)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; The root of most invocation evils:
-;;;
-
-(defun %generic-invoke-member (type member-name flags object args
-                               &key (binder *lisp-binder*))
-  "A generic member invocation function based on
-System.Type.InvokeMember. Works with the CommonLispReflection DLL
-to manage the translation of void return types and thrown
-exceptions. TYPE, OBJECT, and BINDER can be NIL and will be
-converted to handles.  TYPE and OBJECT must not both be NIL. ARGS
-is expected to be a handle of a CLR array, or NIL. Returns a
-varying number of Lisp values."
-  (assert (or type object))
-  (let ((result-handle (%invoke-member type
-                                       member-name
-                                       flags
-                                       binder
-                                       object
-                                       (or args (make-pointer 0)))))
-    (%handle-to-value result-handle)))
-
 (defun %make-args-array (args &optional (size (length args)))
   "Creates a System.Array of rank 1 with element type
 System.Object, copies the elements of the list ARGS into the
@@ -174,11 +151,13 @@ the ARGS are its indexes. If the member is a method, ARGS are the
 arguments. If the member is a field, there must be no optional
 arguments."
   (%with-clr-handle (args-array (%make-args-array args))
-    (%generic-invoke-member type
-                            member-name
-                            *static-member-binding-flags*
-                            nil
-                            args-array)))
+    (let ((result-handle (%invoke-member type
+                                         member-name
+                                         *static-member-binding-flags*
+                                         *lisp-binder*
+                                         nil
+                                         args-array)))
+      (%handle-to-value result-handle))))
 
 (defun invoke-instance (object member-name &rest args)
   "Invokes or retrieves the value of the instance member
@@ -187,11 +166,13 @@ CLR-OBJECT.  If the member is a property, the ARGS are its
 indexes. If the member is a method, ARGS are the arguments. If
 the member is a field, there must be no optional arguments."
   (%with-clr-handle (args-array (%make-args-array args))
-    (%generic-invoke-member nil
-                            member-name
-                            *instance-member-binding-flags*
-                            object
-                            args-array)))
+    (let ((result-handle (%invoke-member nil
+                                         member-name
+                                         *instance-member-binding-flags*
+                                         *lisp-binder*
+                                         object
+                                         args-array)))
+      (%handle-to-value result-handle))))
 
 (defun set-static (new-value type member-name &rest indexes)
   "Sets the value of the member designated by MEMBER-NAME and
@@ -206,11 +187,14 @@ member is a field, there must be no optional arguments."
     (%handle-to-value (%set-array-element args-array
                                           (length indexes)
                                           value-handle))
-    (%generic-invoke-member type
-                            member-name
-                            *static-set-prop-or-field-binding-flags*
-                            nil
-                            args-array))
+    (let ((result-handle
+           (%invoke-member type
+                           member-name
+                           *static-set-prop-or-field-binding-flags*
+                           *lisp-binder*
+                           nil
+                           args-array)))
+      (%handle-to-value result-handle)))
   new-value)
 
 (defun set-instance (new-value object member-name &rest indexes)
@@ -226,11 +210,14 @@ arguments."
     (%handle-to-value (%set-array-element args-array
                                           (length indexes)
                                           value-handle))
-    (%generic-invoke-member nil
-                            member-name
-                            *instance-set-prop-or-field-binding-flags*
-                            object
-                            args-array))
+    (let ((result-handle
+           (%invoke-member nil
+                           member-name
+                           *instance-set-prop-or-field-binding-flags*
+                           *lisp-binder*
+                           object
+                           args-array)))
+      (%handle-to-value result-handle)))
   new-value)
 
 (defun invoke-new (type &rest args)
@@ -238,11 +225,19 @@ arguments."
 symbol designating a CLR type, a CLR type object, or a
 namespace-qualified name string of a CLR type."
   (%with-clr-handle (args-array (%make-args-array args))
-    (%generic-invoke-member type
-                            ".ctor"
-                            *create-instance-binding-flags*
-                            nil
-                            args-array)))
+    (let ((result-handle
+           (%invoke-member type
+                           ".ctor"
+                           *create-instance-binding-flags*
+                           *lisp-binder*
+                           nil
+                           args-array)))
+      (%handle-to-value result-handle))))
+
+(defun invoke-callback-delegate (delegate &rest args)
+  "Invoke a callback delegate. Mainly for testing."
+  (%with-clr-handle (args-handle (%make-args-array args))
+    (%handle-to-value (%invoke-callback delegate args-handle))))
 
 #|
 (defmacro define-clr-call (lisp-name

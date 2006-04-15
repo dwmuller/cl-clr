@@ -28,12 +28,16 @@
                  (:file "member-selection"
                         :depends-on ("packages"
                                      "pcl-unit-test-framework"))
+                 (:file "memory"
+                        :depends-on ("packages"
+                                     "pcl-unit-test-framework"))
                  (:file "all"
                         :depends-on ("packages"
                                      "pcl-unit-test-framework"
                                      "member-access"
                                      "value-types"
-                                     "member-selection"))
+                                     "member-selection"
+                                     "memory"))
                  (:system "cl-clr"))
     :depends-on ("cl-clr"))
 

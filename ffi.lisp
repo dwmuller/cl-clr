@@ -55,13 +55,15 @@
   (typep obj 'clr-object))
 
 #+lispworks
-(hcl:add-special-free-action
- #'(lambda (obj)
-     (when (typep obj 'clr-object)
-       (decf *live-clr-objects)
-       (%release-object-handle (handle-of obj))
-       (hcl:flag-not-special-free-action obj))))
+(defun lispworks-free-clr-handle (obj)
+  (when (typep obj 'clr-object)
+    (decf *live-clr-objects*)
+    (%release-object-handle (handle-of obj))
+    (hcl:flag-not-special-free-action obj)))
 
+#+lispworks
+(hcl:add-special-free-action 'lispworks-free-clr-handle)
+  
 (defun release-if-naked-handle (value)
   "VALUE must be a CLR handle, NIL, or a CLR-OBJECT. In the
 latter two cases, this function does nothing. In the first case,
@@ -466,8 +468,14 @@ allows for efficient internal callbacks."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Miscellany
 
+(defun unreleased-handle-count ()
+  (number-of-unreleased-handles))
+
+(defun uncollected-object-count ()
+  *live-clr-objects*)
+
 (defun unwrapped-handle-count ()
-    (- (number-of-unreleased-handles) *live-clr-objects*))
+    (- (unreleased-handle-count) (uncollected-object-count)))
 
 (defun make-lisp-binder ()
   (%handle-to-value (%make-lisp-binder
