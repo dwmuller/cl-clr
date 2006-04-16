@@ -12,10 +12,11 @@
            :as-var-args
            :bind-namespace
            :clr-array-to-list
+           :clr-exception
            :clr-object
            :clr-object-p
-           :clr-type-name-to-symbol
            :clr-type-of
+           :clr-type-id-of
            ;:define-clr-call TODO
            :do-assemblies
            :do-clr-array

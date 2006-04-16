@@ -150,18 +150,24 @@ it releases the handle. Returns nothing."
 (define-boxing-functions "Boolean" :boolean)
 
 (defun %integer-to-handle (value)
-  (cond
-    ((< value (expt 2  8)) (%box-byte  value))
-    ((< value (expt 2 15)) (%box-int16 value))
-    ((< value (expt 2 31)) (%box-int32 value))
-    #-cffi-features:no-long-long
-    ((< value (expt 2 63)) (%box-int64 value))
-    ((plusp value) (error "Integer value too large to box: ~A" value))
-    ((>= value (- (expt 2 15))) (%box-int16 value))
-    ((>= value (- (expt 2 31))) (%box-int32 value))
-    #-cffi-features:no-long-long
-    ((>= value (- (expt 2 63))) (%box-int64 value))
-    (t (error "Integer value too small to box: ~A" value))))
+  ;; Try to arrange this so that the very common small values get
+  ;; handled fastest. The smallest standard CLR integer type is Byte,
+  ;; and it will always take at least two comparisons to see if we can
+  ;; use it.
+  (if (plusp value)
+      (cond
+        ((< value (expt 2  8)) (%box-byte  value))
+        ((< value (expt 2 15)) (%box-int16 value))
+        ((< value (expt 2 31)) (%box-int32 value))
+        #-cffi-features:no-long-long
+        ((< value (expt 2 63)) (%box-int64 value))
+        (t (error "Integer value too large to box: ~A" value)))
+      (cond
+        ((>= value (- (expt 2 15))) (%box-int16 value))
+        ((>= value (- (expt 2 31))) (%box-int32 value))
+        #-cffi-features:no-long-long
+        ((>= value (- (expt 2 63))) (%box-int64 value))
+        (t (error "Integer value too small to box: ~A" value)))))
 
 (defun %value-to-handle (value)
   "Converts a Lisp value to a handle if it's a boxable

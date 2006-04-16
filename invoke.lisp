@@ -268,17 +268,17 @@ namespace-qualified name string of a CLR type."
 |#
 
 (defmethod describe-object ((obj clr-object) stream)
-  (format stream "~&~S is a CLR object of type ~A:~%  ~A~%"
+  (format stream "~&~S is a CLR object of type ~A~%~A~%"
           obj
-          (invoke-instance obj "GetType")
+          (invoke-instance (invoke-instance obj "GetType") "FullName")
           (invoke-instance obj "ToString")))
 
 ;;; This method determines how CLR exceptions are printed.
 (defmethod print-object ((x clr-exception) stream)
   (if *print-escape*
       (call-next-method)
-      (format stream "~<A Common Language Runtime exception of type ~A was thrown: ~_~A~:>"
-              (invoke-instance (invoke-instance x "GetType") "ToString")
+      (format stream "~&A Common Language Runtime exception of type ~A was thrown: ~_~A"
+              (invoke-instance (invoke-instance x "GetType") "FullName")
               (invoke-instance x "Message"))))
 
 (defun init-invoke ()

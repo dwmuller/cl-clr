@@ -1,9 +1,8 @@
-Made a change to the representation of CLR-CONDITIONS which I think
-causes them to not print correctly, via the PRINT-OBJECT method in
-invoke.lisp. Fix this if it's really borken.
-
-CL-CLR no longer accepts symbols anywhere in lieu of types. Fixing
-this may be a bit difficult. Blocking item for D3D examples et al.
+CL-CLR no longer accepts symbols in arbitrary argument locations in
+lieu of type object. Mechanisms have been exported to work around
+this. But I'm not real happy with the result. Consider whether it
+should be returned to its previous state, or whether the reader syntax
+should be modified instead.
 
 Test D3D examples.
 
@@ -91,6 +90,8 @@ member lookup at runtime. When a *function* is needed, use a
 *specific* member symbol. (See previous item.) Generalized member
 symbol expansions might afford an opportunity to cache results
 of member info at a call site.
+
+Speed up the reader's type lookup by caching results.
 
 Add support for CLR arrays of ranks greater than one.
 

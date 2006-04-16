@@ -60,7 +60,7 @@ CL-CLR does not distinguish between CLR fields, properties, and
 methods. They are all treated as functions on objects (if
 instance-scoped) or type symbols (if statically scoped). SETF forms
 will work with fields and properties in a natural manner. (Although
-see the note under CLR Programming Gotchas.)
+see the note below, under "CLR Struct Types".)
 
 Examples, assuming that the current package has imported the
 referenced CLR symbols from CLR-SYMBOLS:
@@ -88,11 +88,10 @@ type from the nested type:
 
 The reader makes it possible to reference the symbols fairly
 conveniently, and provides both incremental definition of symbols and
-type name resolution against a used namespace list. See that file for
-details.
+type name resolution against a used namespace list. See "The Reader
+Syntax" below for details.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 Prerequisites
 
 CL-CLR uses CFFI for all interaction between Lisp and the CLR.
@@ -119,7 +118,7 @@ other DLLs. You must have DirectX 9.x installed in order to run the
 examples.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-Parameter binding
+Parameter Binding
 
 Parameter binding is involved in the process of selecting a member
 from among several candidates when a method is overloaded. It applies
@@ -164,7 +163,7 @@ treated as an array with element type T, provided both arrays have the
 same number of dimensions and S derives from or implements T.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-The alternative reader syntax.
+The Reader Syntax
 
 You initiate the reader syntax by a call to USE-NAMESPACES, e.g.
 
@@ -225,7 +224,7 @@ per-instance. To access static members, a type-symbol stands in the
 place where an object instance would otherwise be given.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-CLR Struct types
+CLR Struct Types
 
 You must be very careful when working with struct types. They behave
 differently from classes.

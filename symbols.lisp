@@ -64,8 +64,16 @@ the type object."
   "Returns the symbol that denotes the CLR type described by the
 string TYPE-NAME. NAMESPACES is an optional list of namespace
 name strings which will be searched if TYPE-NAME is not
-namespace-qualified."
+namespace-qualified. TYPE-NAME may include an assembly
+designator."
   (check-type type-name string)
+  ;; This is not fast, since it may do a search for the type through
+  ;; all assemblies and namespaces.
+  (let* ((type-object (find-type-from-name type-name namespaces)))
+    (clr-type-object-to-symbol type-object)))
+
+
+  #|
   ;; TODO: If the assembly is given, and we find a symbol for the name
   ;; but it's for a type from a different assembly, we will return the
   ;; symbol even though it specifies the wrong type. In a case like
@@ -82,14 +90,7 @@ namespace-qualified."
       (unless type-symbol
         (setf  type-symbol (clr-type-object-to-symbol
                             (find-type-from-name type-name namespaces))))
-      type-symbol)))
-
-(defun clr-type-of (obj)
-  "Given a CLR object, returns the symbol denoting the object's
-CLR type."
-  (unless (clr-object-p obj)
-    (error "Expected a CLR object, got ~S." obj))
-  (clr-type-object-to-symbol (invoke-member obj "GetType")))
+      type-symbol))) |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -111,6 +112,23 @@ a CLR type to the corresponding object. If ARG is not such a
 symbol, returns NIL."
   (when (and (not (eq arg t)) (symbolp arg))
     (symbol-to-clr-type-object arg)))
+
+(defun clr-type-of (obj)
+  "Given a CLR object, returns the symbol denoting the object's
+CLR type. Analogous to Common Lisp's TYPE-OF."
+  (unless (clr-object-p obj)
+    (error "Expected a CLR object, got ~S." obj))
+  (clr-type-object-to-symbol (invoke-member obj "GetType")))
+
+(defun clr-type-id-of (arg)
+  "Given a designator for a CLR type, returns the corresponding
+CLR System.Type object. The designator can be a symbol created by
+CL-CLR (usually via the reader) to designate the type, or a
+string containing the full type name. Analogous to C++/CLR's
+typeid pseudo-static-field."
+  (cond ((symbolp arg) (symbol-to-clr-type-object arg))
+        ((stringp arg) (find-type-from-full-name arg))
+        (t (error "Expected type designator (a symbol, CLR type object, type name string), but got ~S." arg))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -180,15 +198,6 @@ as a designator for that CLR type. Returns the symbol."
   (setf (get type-symbol 'clr-type) type-object)
   type-symbol)
  
-(defun get-type-symbol (type)
-  "TYPE must be a namespace-qualified type name string or a CLR
-type object. Returns a symbol to represent the type. The symbol
-is interned in a namespace package, and symbols for its members
-are imported into that package from CLR-SYMBOLS."
-  (cond ((stringp type) (clr-type-name-to-symbol type))
-        ((clr-object-p type) (clr-type-object-to-symbol type))
-        (t (error "Expected TYPE to be a CLR type object or qualified type name string."))))
-
 (defun bind-namespace (namespace)
   "Binds all type and member symbols of a namespace which can be
 found in the currently loaded assemblies of the current

@@ -72,7 +72,7 @@
   (with-slots (device vertex-buffer) this
       (setf vertex-buffer
             (new '?VertexBuffer
-                 '?CustomVertex+TransformedColored
+                 (clr-type-id-of '?CustomVertex+TransformedColored)
                  3
                  device
                  (?.None '?Usage)
@@ -90,7 +90,7 @@
   (with-slots (vertex-buffer) this
     (let ((verts (?.CreateInstance
                   '?Array
-                  '?CustomVertex+TransformedColored
+                  (clr-type-id-of '?CustomVertex+TransformedColored)
                   3)))
       (setf (aref* verts 0) (new '?CustomVertex+TransformedColored
                                  150  50 0.5f0 1
