@@ -21,9 +21,8 @@ representing a CLR type) with the elements from the Lisp list
 LIST. BASE-TYPE defaults to System.Object."
   (check-type list sequence)
   (setf element-type (type-arg-to-type-object element-type))
-  (let ((array (?.CreateInstance '?Array
-                                 (type-arg-to-type-object element-type)
-                                 (length list))))
+  (let ((array (?Array.CreateInstance (type-arg-to-type-object element-type)
+                                      (length list))))
     (loop
        for item in list
        for i from 0
@@ -48,26 +47,26 @@ SEQ is a list, and defaults to System.Object. "
 (defun print-members (type &optional member-name)
   (let ((members-info
          (if member-name
-             (?.GetMember (type-arg-to-type-object type)
-                      member-name
-                      (binding-flags "Static"
-                                     "Public"
-                                     "FlattenHierarchy"))
-             (?.GetMembers (type-arg-to-type-object type)))))
+             (?GetMember (type-arg-to-type-object type)
+                         member-name
+                         (binding-flags "Static"
+                                        "Public"
+                                        "FlattenHierarchy"))
+             (?GetMembers (type-arg-to-type-object type)))))
     (do-clr-array (member-info members-info)
       (format t "~&~S: ~A ~A "
-              (?.Name member-info)
-              (?.Name (?.DeclaringType member-info))
-              (?.Name (?.ReflectedType member-info))))))
+              (?Name member-info)
+              (?Name (?DeclaringType member-info))
+              (?Name (?ReflectedType member-info))))))
 
 (defun print-types (prefix &optional full)
   (do-clr-array (assembly
-                   (?.GetAssemblies (?.CurrentDomain '?System.AppDomain)))
-      (do-clr-array (type-object (?.GetExportedTypes assembly))
-        (when (zerop (or (search prefix (?.FullName type-object)) 1))
+                   (?GetAssemblies (?System.AppDomain.CurrentDomain)))
+      (do-clr-array (type-object (?GetExportedTypes assembly))
+        (when (zerop (or (search prefix (?FullName type-object)) 1))
               (format t "~&~A"
                       (if full
-                          (?.AssemblyQualifiedName type-object)
-                          (?.FullName type-object)))))))
+                          (?AssemblyQualifiedName type-object)
+                          (?FullName type-object)))))))
 
 (bind-clr-symbols)

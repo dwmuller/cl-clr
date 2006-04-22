@@ -3,20 +3,21 @@
 ;;;
 (in-package :cl-clr.tests)
 
-(enable-clr-syntax "System")
+(enable-clr-syntax)
+(use-namespaces "System")
 
 (deftest clr-runtime ()
-  (let ((appdomain (?.CurrentDomain '?AppDomain)))
+  (let ((appdomain (?AppDomain.CurrentDomain)))
     (check
      ;; constructors
-     (equal (?.ToString (?.GetType (new '?Byte))) "System.Byte")
+     (equal (?ToString (?GetType (new '?Byte))) "System.Byte")
      
      ;; properties
-     (equal (?.FriendlyName appdomain) "DefaultDomain")
+     (equal (?FriendlyName appdomain) "DefaultDomain")
      
      ;; fields
 
      ;; nullary methods
-     (equal (?.FullName (?.GetType appdomain)) "System.AppDomain"))))
+     (equal (?FullName (?GetType appdomain)) "System.AppDomain"))))
 
 (bind-clr-symbols)

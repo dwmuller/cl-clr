@@ -3,9 +3,10 @@
 ;;;
 (in-package :cl-clr.tests)
 
-(enable-clr-syntax "System"
-                   "System.Reflection"
-                   "SpookyDistance.CommonLispReflection.TestLibrary")
+(enable-clr-syntax)
+(use-namespaces "System"
+                "System.Reflection"
+                "SpookyDistance.CommonLispReflection.TestLibrary")
 
 
 (deftest value-types ()
@@ -14,9 +15,9 @@
     (new '?Struct2)
     (new '?Struct2 5)
     
-    (let ((public (enum-value '?BindingFlags '?.Public))
+    (let ((public (enum-value '?BindingFlags '?Public))
           (static (enum-value '?BindingFlags "Static")))
       (eql (or-enum-values '?BindingFlags "Public" "Static")
            (or-enum-values '?BindingFlags public static)))))
        
-(bind-clr-symbols)
+(bind-clr-symbols t)

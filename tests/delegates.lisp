@@ -3,8 +3,9 @@
 ;;;
 (in-package :cl-clr.tests)
 
-(enable-clr-syntax "System"
-                   "SpookyDistance.CommonLispReflection.TestLibrary")
+(enable-clr-syntax)
+(use-namespaces "System"
+                "SpookyDistance.CommonLispReflection.TestLibrary")
 
 
 (defmacro returns-void (form)
@@ -16,32 +17,32 @@
     (let (sentinel)
       (check
 
-       (returns-void (?.add_DoSomethingFromNothing
+       (returns-void (?add_DoSomethingFromNothing
                       obj1
                       (new '?DoSomethingFromNothingDelegate
                            #'(lambda () (setf sentinel t)))))
-       (returns-void (?.RaiseDoSomethingFromNothing obj1))
+       (returns-void (?RaiseDoSomethingFromNothing obj1))
        sentinel))
 
     (let (sentinel)
       (check
-       (returns-void (?.add_DoSomethingFromObject
+       (returns-void (?add_DoSomethingFromObject
                       obj1
                       (new '?DoSomethingFromObjectDelegate
                            #'(lambda (i) (setf sentinel i)))))
-       (returns-void (?.RaiseDoSomethingFromObject obj1 1))
+       (returns-void (?RaiseDoSomethingFromObject obj1 1))
        (eql sentinel 1)
-       (returns-void (?.RaiseDoSomethingFromObject obj1 5))
+       (returns-void (?RaiseDoSomethingFromObject obj1 5))
        (eql sentinel 5)
-       (returns-void (?.RaiseDoSomethingFromObject obj1 "A String"))
+       (returns-void (?RaiseDoSomethingFromObject obj1 "A String"))
        (equal sentinel "A String")))
        
     (check
-     (returns-void (?.add_ReturnIntFromNothing
+     (returns-void (?add_ReturnIntFromNothing
                     obj1
                     (new '?ReturnIntFromNothingDelegate
                          #'(lambda () 36))))
-       (eql (?.RaiseReturnIntFromNothing obj1) 36))
+       (eql (?RaiseReturnIntFromNothing obj1) 36))
 
     ;; Test ability to return ref-type objects from delegates.
     ;; Also tests handle management when a delegate returns
@@ -50,15 +51,15 @@
     (let ((arg1 (new '?StringEncapsulator "A"))
           (arg2 (new '?StringEncapsulator "B")))
       (check
-        (returns-void (?.add_ReturnObjectFromArgs
+        (returns-void (?add_ReturnObjectFromArgs
                        obj1
                        (new '?ReturnObjectFromArgsDelegate
                             #'(lambda (value_arg ref_arg1 ref_arg2)
                                 (if (zerop value_arg)
                                     ref_arg1
                                     ref_arg2)))))
-        (equal "A" (?.ToString (?.RaiseReturnObjectFromArgs obj1 0 arg1 arg2)))
-        (equal "B" (?.ToString (?.RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))
+        (equal "A" (?ToString (?RaiseReturnObjectFromArgs obj1 0 arg1 arg2)))
+        (equal "B" (?ToString (?RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))
         (zerop (unwrapped-handle-count))))
     
     ;; TODO: Add negative tests, removal tests, multicasting tests.

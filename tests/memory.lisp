@@ -1,7 +1,8 @@
 (in-package :cl-clr.tests)
 
-(enable-clr-syntax "System"
-                   "SpookyDistance.CommonLispReflection.TestLibrary")
+(enable-clr-syntax)
+(use-namespaces "System"
+                "SpookyDistance.CommonLispReflection.TestLibrary")
 
 ;; From the Lisp FAQ, we get a way to create a "/dev/null" stream:
 (defparameter *dev-null*

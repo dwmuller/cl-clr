@@ -4,8 +4,6 @@ this. But I'm not real happy with the result. Consider whether it
 should be returned to its previous state, or whether the reader syntax
 should be modified instead.
 
-Test D3D examples.
-
 Update make-zip.cmd.
 
 Test argument binding of floats and doubles, particularly when running

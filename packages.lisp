@@ -16,7 +16,6 @@
            :clr-object
            :clr-object-p
            :clr-type-of
-           :clr-type-id-of
            ;:define-clr-call TODO
            :do-assemblies
            :do-clr-array
@@ -31,6 +30,7 @@
            :print-types
            :ref
            :shutdown-clr
+           :to-clr-type-object
 
            ;; Related to the alternative reader:
            :enable-clr-syntax

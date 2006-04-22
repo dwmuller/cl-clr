@@ -89,6 +89,70 @@ returns T, otherwise NIL."
      if (and pos (or (zerop pos) (not (eql (aref type-name (1- pos)) #\\))))
      return t))
 
+(define-condition clr-type-undefined (error)
+  ((type-name :type string
+              :accessor type-name-of
+              :initarg :type-name)
+   (assemblies :type list
+               :accessor assemblies-searched
+               :initarg :assemblies)))
+
+(define-condition clr-type-multiply-defined (error)
+  ((type-name :type list
+              :accessor type-name-of
+              :initarg :type-name)
+   (assemblies :type list
+               :accessor defining-assemblies
+               :initarg defining-assemblies)))
+
+(define-condition clr-type-not-found (error)
+  ((type-name :type string
+              :accessor type-name-of
+              :initarg :type-name)
+   (namespaces :type list
+               :accessor namespaces-searched
+               :initarg :namespaces)))
+
+(define-condition clr-type-ambiguous (error)
+  ((type-name :type string
+              :accessor type-name-of
+              :initarg :type-name)
+   (candidates :type list
+               :accessor candidates-of
+               :initarg :candidates)))
+
+(defmethod print-object ((x clr-type-undefined) stream)
+  (format stream
+          "Could not find an accessible public type named ~S.~%~
+           Searched these assemblies:~%~{  ~A~%~}"
+          (type-name-of x)
+          (map 'list #'(lambda (a)
+                         (invoke-instance a "FullName"))
+               (assemblies-searched x))))
+
+(defmethod print-object ((x clr-type-multiply-defined) stream)
+  (format stream
+          "Type ~S is multiply defined in these assemblies:~%~{  ~A~%~}"
+          (type-name-of x)
+          (map 'list
+               #'(lambda (type)
+                   (invoke-instance (invoke-instance type "Assembly")
+                                    "FullName"))
+               (defining-assemblies x))))
+
+(defmethod print-object ((x clr-type-not-found) stream)
+  (format stream
+          "Could not find an accessible public type named ~S.~%~
+           Searched these namespaces:~%~{  ~A~%~}"
+          (type-name-of x)
+          (namespaces-searched x)))
+
+(defmethod print-object ((x clr-type-ambiguous) stream)
+  (format stream
+          "Type name ~S is ambiguous. Could refer to any of:~%~{  ~A~%~}"
+          (type-name-of x)
+          (candidates-of x)))
+  
 (defun find-type-from-full-name (type-name)
   "Returns a System.Type object for the type in the given
 namespace with the given simple-name. It searches all assemblies
@@ -109,19 +173,16 @@ INIT-TYPE-OBJECTS."
             (t (setf result (list type result)))))))
     (typecase result
       (null
-       (error "Could not find an accessible public type named ~S.~%Searched these assemblies:~%~{  ~A~%~}"
-              type-name
-              (map 'list #'(lambda (a) (invoke-instance a "FullName"))
-                   (clr-array-to-list (invoke-instance *default-app-domain*
-                                                       "GetAssemblies")))))
+       (error (make-condition 'clr-type-undefined
+                              :type-name type-name
+                              :assemblies
+                              (clr-array-to-list
+                               (invoke-instance *default-app-domain*
+                                                "GetAssemblies")))))
       (list
-       (error "Type ~S is multiply defined in these assemblies:~%~{  ~A~%~}"
-              type-name
-              (map 'list
-                   (lambda (type)
-                     (invoke-instance (invoke-instance type "Assembly")
-                                      "FullName"))
-                   result)))
+       (error (make-condition 'clr-type-ambiguous
+                              :type-name type-name
+                              :assemblies result))) 
       (t result))))
 
 (defun find-type-from-simple-name (simple-name namespaces)
@@ -134,27 +195,28 @@ the type is not found, or if it is ambiguous."
        for namespace in (cons "" namespaces)
        for qualified-name = (concatenate 'string namespace "." simple-name)
        do (do-clr-array
-              (assembly (invoke-instance *default-app-domain*
-                                       "GetAssemblies"))
+              (assembly (invoke-instance *default-app-domain* "GetAssemblies"))
             (let ((type (invoke-instance assembly "GetType" qualified-name)))
               (when (and type
                          (or (invoke-instance type "IsPublic")
                              (invoke-instance type "IsNestedPublic")))
                 (typecase result
                   (null (setf result type))
-                  (t (push type result))
-                  (symbol (setf result (list type result))))))))
+                  (list (push type result))
+                  (t (setf result (list type result))))))))
     (typecase result
       (null
-       (error "Could not find an accessible public type named ~S.~%Searched these namespaces:~%~{  ~A~%~}"
-              simple-name
-              namespaces))
+       (error (make-condition 'clr-type-not-found
+                              :type-name simple-name
+                              :namespaces namespaces)))
       (list
-       (error "Type name ~S is ambiguous. Could refer to any of:~%~{  ~A~%~}"
-              simple-name
-              (map 'list
-                   (lambda (type) (invoke-instance type "FullName"))
-                   result)))
+       (error (make-condition 'clr-type-ambiguous
+                              :type-name simple-name
+                              :candidates
+                              (map 'list
+                                   (lambda (type)
+                                     (invoke-instance type "FullName"))
+                                   result))))
       (t result))))
 
 (defun find-type-from-name (type-name namespaces)

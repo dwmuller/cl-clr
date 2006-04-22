@@ -165,18 +165,74 @@ same number of dimensions and S derives from or implements T.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 The Reader Syntax
 
-You initiate the reader syntax by a call to USE-NAMESPACES, e.g.
+You initiate the reader syntax by a call to ENABLE-CLR-SYNTAX. This is
+usually followed by a USE-NAMESPACES form.
 
+(enable-clr-syntax)
 (use-namespaces "System"
 		"System.Windows.Forms")
 
 
-The reader expands CLR names prefixed by a question mark, like this:
+A file that uses the reader syntax must end with a BIND-CLR-SYMBOLS
+form:
 
-What             Syntax                   Expansion
----------------------------------------------------
-type:            ?typename                type-symbol
-member:          ?.membername             member-symbol
+(bind-clr-symbols)
+
+The reader returns a symbol to replace CLR names prefixed by a
+question mark. It resolves unqualified type names at read time. This
+has two advantages: Once a type has been associated with a symbol,
+that type name won't have to be looked up at run time anymore, as the
+type information will be cached on the symbol. Secondly, changes to
+the list of used namespaces won't change the run-time interpretation
+of a type name.
+
+There are three basic types of symbols: Those that refer to a static
+member, those that refer to a type, and those that refer to an
+instance member.  Depending on the exact syntax encountered, a type
+may ambiguously refer to either a type or an instance member. Static
+and type symbols may be prefixed by a namespace. Here are some
+examples:
+
+?Type.EmptyTypes
+
+   This is a static member reference, by virtue of being a name
+   (GetType) qualified by a type prefix (Type.). The reader searches
+   all currently used namespaces at read-time to resolve the type
+   name. The reader ensures that the symbol has a function definition
+   and, if appropriate, a corresponding SETF definition.
+
+?System.Reflection:MemberInfo.ReferenceEquals
+
+    This is also a static member reference. In this case, the type
+    name is prefixed by a namespace name, which ends in a colon. This
+    syntax is analogous to Lisp's package name prefix. Note that
+    ReferenceEquals is actually inherited from System:Object.
+
+?System:Type
+
+    This is a reference to a type, qualified by a namespace.
+
+?GetType
+
+    This CLR symbol is ambiguous, and could refer either to an 
+    instance member or a type. The reader will define it as a type
+    if it can resolve it as such, and will always give it a
+    function definition and SETF definition. The reader does
+    not attempt to verify the existence of a corresponding instance
+    member, since it doesn't know at read time what type of object
+    the symbol might be used with.
+
+Instance and static member symbols are used just like normal Lisp
+operators:
+
+  (?AsString (?GetType my-object))      ; instance member call
+  (?AsString (?Type.GetType "System.AppDomain")) ; static call
+
+Symbols are used to designate types when calling a few specific
+functions in CL-CLR:
+
+  (let ((obj (new '?Point))) ... )
+
 
 Type names can be either namespace-qualified, or simple. If simple,
 they must uniquely identify a type in one of the currently used
@@ -184,6 +240,12 @@ namespaces. (No partial namespace qualification is allowed.) The
 reader resolves type names during the read phase, and signals a clear
 error if a type name cannot be resolved or if it has multiple possible
 resolutions.
+
+Nested type names are separated from other type names by a plus-sign,
+e.g:
+
+(let ((obj (new '?OuterType+MyNestedType+MyEvenMoreNestedType)))
+  ...)
 
 At the end of the file, or at least before any top-level forms are
 evaluated that rely on CLR symbols, you must call
@@ -196,23 +258,23 @@ cross-reference.
 
 Here is an example that creates a Direct3D device:
 
-(use-namespaces "System"
-                "System.Drawing"
-                "System.Windows.Forms"
-                "Microsoft.DirectX"
-                "Microsoft.DirectX.Direct3D")
+(enable-clr-syntax "System"
+                   "System.Drawing"
+                   "System.Windows.Forms"
+                   "Microsoft.DirectX"
+                   "Microsoft.DirectX.Direct3D")
 
 ...
 
 (defun make-device (form)
   (let ((presentParams (new '?PresentParameters)))
-    (setf (?.Windowed presentParams) t
-          (?.SwapEffect presentParams) (?.Discard '?SwapEffect))
+    (setf (?Windowed presentParams) t
+          (?SwapEffect presentParams) (?SwapEffect.Discard))
     (new '?Device
          0
-         (?.Hardware '?DeviceType)
+         (?DeviceType.Hardware)
          form
-         (?.SoftwareVertexProcessing '?CreateFlags)
+         (?CreateFlags.SoftwareVertexProcessing)
          presentParams)))
 ...
 
@@ -220,8 +282,12 @@ Here is an example that creates a Direct3D device:
 
 Notice that fields, properties, and methods are all treated uniformly
 like functions or accessors, regardless of whether they are static or
-per-instance. To access static members, a type-symbol stands in the
-place where an object instance would otherwise be given.
+per-instance.
+
+Static member symbols and explicitly namespace-qualified type symbols
+are interned in a package whose name is derived from the namespace
+name, and are thus shared throughout a Lisp environment. All other
+symbols are interned in the current package.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CLR Struct Types
@@ -233,7 +299,7 @@ A good example occurs when working with an array of structs. Assume we
 have a Point class with field members X, Y, and Z. Let's create an
 array of three points:
 
-(let ((parray (?.CreateInstance '?System.Array
+(let ((parray (?System.Array.CreateInstance
                                 (get-type-object '?Point)
 				3)))
   ...
@@ -246,7 +312,7 @@ for Point that takes the initial values for X, Y, and Z:
 This works fine. Our next attempt, to modify one of the fields, will
 silently fail:
 
-  (setf (?.X (aref* parray 0)) 10)
+  (setf (?X (aref* parray 0)) 10)
 
 Why? Because Point is a structure. AREF* actually returns a boxed copy
 of the first point in PARRAY; we end up modifying the X value of this
@@ -266,8 +332,9 @@ Be aware that if you use the reader syntax, you won't, in general, be
 able to redefine functions that depend on it without loading the
 entire file. This reminder is relevant if you use Slime or some other
 development environment that allows you to evaluate a fragment of code
-from a file. The CLR symbols will be mis-interpreted as symbols that
-actually start with a question mark, causing run-time errors.
+from an editor buffer. The CLR symbols will be mis-interpreted as
+symbols that actually start with a question mark, causing run-time
+errors.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Circular memory references
