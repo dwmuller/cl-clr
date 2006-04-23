@@ -228,7 +228,7 @@ type."
       ;;
       (cond
         (type-name (make-static-member-symbol type-name name namespace))
-        (namespace (make-type-symbol type-name namespace))
+        (namespace (make-type-symbol identifier namespace))
         (t (make-type-and-instance-member-symbol identifier))))))
 
 ;----------------------------------------------------------------------------

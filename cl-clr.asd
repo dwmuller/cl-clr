@@ -53,5 +53,10 @@
                                      "invoke"
                                      "reader"
                                      "init"))
+                 (:file "define"
+                        :depends-on ("packages"
+                                     "ffi"
+                                     "invoke"
+                                     "util"))
                  (:system "cffi"))
     :depends-on ("cffi"))

@@ -1,3 +1,5 @@
+Reimplement DEFINE-CLR-CALL. First version might be stupid.
+
 CL-CLR no longer accepts symbols in arbitrary argument locations in
 lieu of type object. Mechanisms have been exported to work around
 this. But I'm not real happy with the result. Consider whether it
@@ -8,8 +10,6 @@ Update make-zip.cmd.
 
 Test argument binding of floats and doubles, particularly when running
 with LispWorks.
-
-Reimplement DEFINE-CLR-CALL. First version might be stupid.
 
 Make LIST-TO-CLR-ARRAY more efficient by using the substrate's
 make_array() function.

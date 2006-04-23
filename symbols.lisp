@@ -25,7 +25,7 @@ string containing the full type name. Analogous to C++/CLR's
 typeid pseudo-static-field or C#'s typeof() operator."
   (cond ((symbolp arg) (get arg 'clr-type))
         ((stringp arg) (find-type-from-full-name arg))
-        (t (error "Expected type designator (a symbol, CLR type object, type name string), but got ~S." arg))))
+        (t (error "Expected type designator (a symbol, CLR type object, or type name string), but got ~S." arg))))
 
 (defun type-arg-to-type-object (arg)
   "Converts an argument value which is required to be a type

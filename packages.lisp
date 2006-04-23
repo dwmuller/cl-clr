@@ -16,7 +16,7 @@
            :clr-object
            :clr-object-p
            :clr-type-of
-           ;:define-clr-call TODO
+           :define-clr-call
            :do-assemblies
            :do-clr-array
            :enum-value

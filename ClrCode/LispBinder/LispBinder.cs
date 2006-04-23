@@ -510,6 +510,8 @@ namespace SpookyDistance.CommonLispReflection
 
                 if (to.IsValueType)
                     throw new InvalidCastException("From null ptr to value type.");
+                    
+                return obj;
             }
 
             Type from = obj.GetType();
@@ -859,7 +861,8 @@ namespace SpookyDistance.CommonLispReflection
             if (varying_args_type != null)
             {
                 --n_required;
-                wrapped_varargs = args[n_required] as VarArgs;
+                if (n_args > n_required)
+                    wrapped_varargs = args[n_required] as VarArgs;
                 if (wrapped_varargs == null)
                 {
                     // The method takes varying args, and we haven't been
