@@ -35,7 +35,7 @@
        (returns-void (?RaiseDoSomethingFromObject obj1 5))
        (eql sentinel 5)
        (returns-void (?RaiseDoSomethingFromObject obj1 "A String"))
-       (equal sentinel "A String")))
+       (expect "A String" sentinel)))
        
     (check
      (returns-void (?add_ReturnIntFromNothing
@@ -58,8 +58,8 @@
                                 (if (zerop value_arg)
                                     ref_arg1
                                     ref_arg2)))))
-        (equal "A" (?ToString (?RaiseReturnObjectFromArgs obj1 0 arg1 arg2)))
-        (equal "B" (?ToString (?RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))
+        (expect "A" (?ToString (?RaiseReturnObjectFromArgs obj1 0 arg1 arg2)))
+        (expect "B" (?ToString (?RaiseReturnObjectFromArgs obj1 1 arg1 arg2)))
         (zerop (unwrapped-handle-count))))
     
     ;; TODO: Add negative tests, removal tests, multicasting tests.

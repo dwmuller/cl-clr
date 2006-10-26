@@ -6,8 +6,9 @@
 
 (defpackage :pcl-unit-test-framework
   (:use :common-lisp)
-  (:export :deftest
-           :check
+  (:export :check
+           :deftest
+           :expect
            :report-result))
 
 (defpackage :common-lisp-common-language-runtime.tests

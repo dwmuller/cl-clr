@@ -53,3 +53,9 @@
            (multiple-value-bind (,single-result) ,form ,single-result))
        (print-result ,result ',form ,condition)
        ,result)))
+
+(defun expect (expected got)
+  (if (equal expected got)
+      t
+      (error "Expected ~A, got ~A." expected got)))
+

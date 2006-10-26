@@ -2,6 +2,7 @@
 
 (deftest all ()
   (check
+    (zerop (unwrapped-handle-count))
     (value-types)
     (zerop (unwrapped-handle-count))
     (member-access)

@@ -10,14 +10,14 @@
   (let ((appdomain (?AppDomain.CurrentDomain)))
     (check
      ;; constructors
-     (equal (?ToString (?GetType (new '?Byte))) "System.Byte")
+     (expect "System.Byte" (?ToString (?GetType (new '?Byte))))
      
      ;; properties
-     (equal (?FriendlyName appdomain) "DefaultDomain")
+     (expect "DefaultDomain" (?FriendlyName appdomain))
      
      ;; fields
 
      ;; nullary methods
-     (equal (?FullName (?GetType appdomain)) "System.AppDomain"))))
+     (expect "System.AppDomain" (?FullName (?GetType appdomain))))))
 
 (bind-clr-symbols)
