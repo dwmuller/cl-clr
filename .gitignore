@@ -1,0 +1,13 @@
+
+# /
+/*.fsl
+
+# /ClrCode/
+/ClrCode/*.ncb
+/ClrCode/*.suo
+
+# /examples/
+/examples/*.fsl
+
+# /tests/
+/tests/*.fsl
